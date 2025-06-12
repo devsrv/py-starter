@@ -22,6 +22,17 @@
 				"reveal": "always",
 				"panel": "new"
 			}
+		},
+		{
+			"label": "Lint",
+			"type": "shell",
+			"command": "./.scripts/mypy.sh",
+			"group": "test",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "new"
+			}
 		}
 	]
 }

@@ -1,0 +1,12 @@
+{
+	"python.analysis.typeCheckingMode": "strict",
+	"python.linting.enabled": true,
+	"python.linting.mypyEnabled": true,
+	"python.linting.pylintEnabled": true,
+	"python.formatting.provider": "black",
+	"python.sortImports.provider": "isort",
+	"editor.formatOnSave": true,
+	"editor.codeActionsOnSave": {
+		"source.organizeImports": "always"
+	}
+}

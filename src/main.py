@@ -1,4 +1,3 @@
-import os
 import logging
 from .config import Config
 from .report.notify import async_report, NotificationType
@@ -14,7 +13,7 @@ class App:
         self.org_id = org_id
         
         # Use provided clients or create new ones
-        self.db = db_client or MongoDBClient()
+        self.db: MongoDBClient = db_client or MongoDBClient()
         self.cache = cache_client or RedisCache(
             host=Config.REDIS_HOST,
             port=Config.REDIS_PORT,

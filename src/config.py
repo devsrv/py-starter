@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+from zoneinfo import ZoneInfo
 
 load_dotenv()
 
@@ -9,7 +10,7 @@ class Config:
     DEBUG = APP_MODE != 'production'
     LOG_LEVEL = 'DEBUG' if DEBUG else 'INFO'
     
-    TZ = os.getenv('TZ', 'America/New_York')
+    TZ = ZoneInfo(os.getenv('TZ', 'America/New_York'))
     
     LOGGING = {
         'version': 1,

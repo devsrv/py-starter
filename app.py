@@ -1,12 +1,12 @@
 from src.config import Config
 from src.utils import now
 from fastapi import FastAPI, Header, HTTPException, Depends
-from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging.config
-from typing import List, AsyncGenerator
+from typing import AsyncGenerator
+from src.models.api_request import ApiRequest
 
 # Configure logging
 logging.config.dictConfig(Config.LOGGING)
@@ -51,7 +51,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-async def verify_api_key(x_api_key: str = Header(None)):
+async def verify_api_key(x_api_key: str|None = Header(None)):
     if Config.HTTP_SECRET is None:
         raise HTTPException(status_code=500, detail="API key not configured")
     if x_api_key is None:
@@ -62,9 +62,6 @@ async def verify_api_key(x_api_key: str = Header(None)):
     if not secrets.compare_digest(x_api_key, Config.HTTP_SECRET):
         raise HTTPException(status_code=401, detail="Invalid API key")
     return x_api_key
-
-class ApiRequest(BaseModel):
-    org_id: int
     
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
@@ -83,7 +80,6 @@ async def health():
 async def test_fn(request: ApiRequest, api_key: str = Depends(verify_api_key)):
     try:
         # Simulate some processing logic
-        
         
         response = {
             "success": True,
