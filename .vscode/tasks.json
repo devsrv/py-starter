@@ -1,0 +1,27 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "FastAPI",
+			"type": "shell",
+			"command": "uvicorn app:app --reload",
+			"group": "test",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "new"
+			}
+		},
+		{
+			"label": "Save to requirements.txt",
+			"type": "shell",
+			"command": "pip freeze > requirements.txt",
+			"group": "test",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "new"
+			}
+		}
+	]
+}
