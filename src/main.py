@@ -1,5 +1,5 @@
 import os
-import logging.config
+import logging
 from .config import Config
 from .report.notify import async_report, NotificationType
 from datetime import timedelta
@@ -7,7 +7,7 @@ from .cache.redis import RedisCache
 from .db.store import MongoDBClient
 
 # Configure logging
-logging.config.dictConfig(Config.LOGGING)
+logger = logging.getLogger(__name__)
             
 class App:
     def __init__(self, org_id, db_client=None, cache_client=None):

@@ -5,34 +5,41 @@ load_dotenv()
 
 class Config:
     APP_NAME = os.getenv('APP_NAME', 'My APP')
-    APP_MODE = os.getenv('APP_MODE', 'test')
+    APP_MODE = os.getenv('APP_MODE', 'development')
+    DEBUG = APP_MODE != 'production'
+    LOG_LEVEL = 'DEBUG' if DEBUG else 'INFO'
+    
+    TZ = os.getenv('TZ', 'America/New_York')
     
     LOGGING = {
         'version': 1,
         'disable_existing_loggers': False,
         'formatters': {
-            'standard': {
-                'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
-            },
+        'standard': {
+            'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+        },
+        'detailed': {
+            'format': '%(asctime)s [%(levelname)s] %(name)s:%(lineno)d: %(message)s'
+        },
         },
         'handlers': {
             'default': {
-                'level': 'INFO',
-                'formatter': 'standard',
+                'level': LOG_LEVEL,
+                'formatter': 'detailed' if DEBUG else 'standard',
                 'class': 'logging.StreamHandler',
             },
             'file': {
                 'level': 'ERROR',
                 'formatter': 'standard',
                 'class': 'logging.FileHandler',
-                'filename': 'audio_processor_errors.log',
+                'filename': 'app_errors.log',
                 'mode': 'a',
             },
         },
         'loggers': {
             '': {
                 'handlers': ['default', 'file'],
-                'level': 'INFO',
+                'level': LOG_LEVEL,
                 'propagate': False
             }
         }
@@ -64,3 +71,17 @@ class Config:
     
     # OpenAI configuration
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+    
+    @classmethod
+    def validate(cls):
+        """Validate critical configuration"""
+        errors = []
+        
+        if cls.APP_MODE == 'production':
+            if not cls.HTTP_SECRET:
+                errors.append("HTTP_SECRET is required in production")
+            if not cls.ALLOWED_ORIGINS:
+                errors.append("ALLOWED_ORIGINS is required in production")
+                
+        if errors:
+            raise ValueError(f"Configuration errors: {', '.join(errors)}")

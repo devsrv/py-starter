@@ -31,3 +31,12 @@ curl -X POST http://localhost:8000/test \
 ## Services required in server
 
 -   Redis
+
+## TODO
+
+-   type validation while coding
+-   in development report in log file
+-   Middleware
+-   global tz setup
+-   cli arg based commands
+-   email
