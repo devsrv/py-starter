@@ -1,3 +1,11 @@
+# FastAPI Production Starter
+
+🚀 Production-ready FastAPI template with daily log rotation, type safety, MongoDB/Redis support, task scheduling, and comprehensive error handling.
+
+**Features:** Auto API docs • Daily logs • Type validation • API auth • Background jobs • Health checks
+
+Perfect for microservices and data processing APIs. Skip the boilerplate, start building features.
+
 ## Install Python & Create a new virtual environment
 
 ```shell
@@ -44,10 +52,10 @@ cat src/storage/logs/app-yyyy-mm-dd.log
 cat src/storage/logs/error-yyyy-mm-dd.log
 ```
 
-# Helper & Utilities
+### Helper & Utilities
 
 ```python
-await async_report(f"SKIPPING: processing already attempted 3 times, answer - {self.answer_id}", NotificationType.WARNING) # notify (google chat)
+await async_report("Message ...", NotificationType.WARNING) # notify (google chat)
 
 get_md5("value") # md5 hash
 
