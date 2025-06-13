@@ -1,9 +1,11 @@
 import asyncio
 import aiohttp
-import json
+import logging
 from ..config import Config
 from enum import Enum, unique
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 @unique
 class NotificationType(Enum):
@@ -25,6 +27,11 @@ async def async_report(message, notification_type: NotificationType=Notification
     Returns:
         bool: True if successful, False otherwise
     """
+    if Config.APP_MODE != "production":
+        # In non-production mode, just log the message
+        logger.info(f"[{notification_type.value}] {message}")
+        return True
+    
     # Format based on notification type
     if notification_type == NotificationType.WARNING:
         title = "⚠️ WARNING"
@@ -69,13 +76,13 @@ async def async_report(message, notification_type: NotificationType=Notification
                 response.raise_for_status()
                 return True
     except asyncio.TimeoutError:
-        print(f"Timeout sending message to Google Chat: {message}")
+        logger.error(f"Timeout sending message to Google Chat: {message}")
         return False
     except aiohttp.ClientError as e:
-        print(f"HTTP error sending message to Google Chat: {e}")
+        logger.error(f"HTTP error sending message to Google Chat: {e}")
         return False
     except Exception as e:
-        print(f"Failed to send message to Google Chat: {e}")
+        logger.error(f"Failed to send message to Google Chat: {e}")
         return False
     
 def report(
@@ -100,5 +107,5 @@ def report(
             return asyncio.run(async_report(message, notification_type, webhook_url))
     except RuntimeError:
         # If we can't use async, fall back to synchronous version
-        print(f"[{notification_type.value}] {message}")
+        logger.error(f"[{notification_type.value}] {message}")
         return True
