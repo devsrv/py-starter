@@ -1,3 +1,4 @@
+from .daily_file_handler import DailyFileHandler
 import os
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo
@@ -9,39 +10,57 @@ class Config:
     APP_NAME = os.getenv('APP_NAME', 'My APP')
     APP_MODE = os.getenv('APP_MODE', 'development')
     DEBUG = APP_MODE != 'production'
-    LOG_LEVEL = 'DEBUG' if DEBUG else 'INFO'
     
     TZ = ZoneInfo(os.getenv('TZ', 'America/New_York'))
+    
+    LOG_DIR = Path('src/storage/logs')
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    LOG_LEVEL = 'DEBUG' if DEBUG else 'INFO'
     
     LOGGING = {
         'version': 1,
         'disable_existing_loggers': False,
         'formatters': {
-        'standard': {
-            'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
-        },
-        'detailed': {
-            'format': '%(asctime)s [%(levelname)s] %(name)s:%(lineno)d: %(message)s'
-        },
+            'standard': {
+                'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+                'datefmt': '%Y-%m-%d %H:%M:%S'
+            },
+            'detailed': {
+                'format': '%(asctime)s [%(levelname)s] %(name)s:%(lineno)d: %(message)s',
+                'datefmt': '%Y-%m-%d %H:%M:%S'
+            },
         },
         'handlers': {
-            'default': {
+            'console': {
                 'level': LOG_LEVEL,
                 'formatter': 'detailed' if DEBUG else 'standard',
                 'class': 'logging.StreamHandler',
+                'stream': 'ext://sys.stdout'
             },
-            'file': {
-                'level': 'ERROR',
+            'file_daily': {
+                '()': DailyFileHandler,
+                'filename_pattern': str(LOG_DIR / 'app-{date}.log'),
+                'level': 'INFO',
                 'formatter': 'standard',
-                'class': 'logging.FileHandler',
-                'filename': 'src/storage/logs/app_errors.log',
-                'mode': 'a',
+                'encoding': 'utf-8',
             },
+            'error_daily': {
+                '()': DailyFileHandler,
+                'filename_pattern': str(LOG_DIR / 'error-{date}.log'),
+                'level': 'ERROR',
+                'formatter': 'detailed',
+                'encoding': 'utf-8',
+            }
         },
         'loggers': {
-            '': {
-                'handlers': ['default', 'file'],
+            '': {  # Root logger
+                'handlers': ['console', 'file_daily', 'error_daily'],
                 'level': LOG_LEVEL,
+                'propagate': False
+            },
+            'fastapi': {
+                'handlers': ['console', 'file_daily'],
+                'level': 'INFO',
                 'propagate': False
             }
         }

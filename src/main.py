@@ -6,7 +6,7 @@ from .cache.redis import RedisCache
 from .db.store import MongoDBClient
 
 # Configure logging
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) # __name__ or could be fastapi etc. as configured in Config.LOGGING
             
 class App:
     def __init__(self, org_id, db_client=None, cache_client=None):

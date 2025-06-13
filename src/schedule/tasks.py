@@ -1,7 +1,11 @@
 import schedule
 import time
 import logging
+import logging.config
+from ..config import Config
 
+# Configure logging
+logging.config.dictConfig(Config.LOGGING)
 logger = logging.getLogger(__name__)
 
 def job():
