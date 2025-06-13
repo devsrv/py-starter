@@ -18,7 +18,7 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4 # in production to expose
 ### Endpoints:
 
 ```bash
-curl -X GET http://localhost:8000/status
+curl -X GET http://localhost:8000/health
 
 curl -X POST http://localhost:8000/test \
      -H "Content-Type: application/json" \
@@ -32,9 +32,42 @@ curl -X POST http://localhost:8000/test \
 
 -   Redis
 
+```bash
+sudo apt update
+sudo systemctl status redis
+```
+
+## Task Scheduling
+
+### Find your venv python path
+
+```bash
+which python # inside code root while your venv is activated
+
+# should return something like: /home/sourav/apps/py-starter/venv/bin/python
+```
+
+### Run while local development
+
+```bash
+/home/sourav/apps/py-starter/venv/bin/python /home/sourav/apps/py-starter/src/schedule/tasks.py
+```
+
+### Setup Cron in Production
+
+```bash
+crontab -e
+
+# add this line at the bottom
+/home/sourav/apps/py-starter/venv/bin/python /home/sourav/apps/py-starter/src/schedule/tasks.py >> /var/log/scheduler.log 2>&1
+
+# check cron logs
+cat /var/log/scheduler.log
+```
+
 ## TODO
 
--   in development report in log file
--   Middleware
+-   while in development report in log file
+-   Route Middleware
 -   cli arg based commands
 -   email
