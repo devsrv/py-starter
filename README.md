@@ -37,10 +37,22 @@ sudo apt update
 sudo systemctl status redis
 ```
 
-### Check app error logs
+### Check app logs
 
 ```bash
-cat src/storage/logs/app_errors.log
+cat src/storage/logs/app-yyyy-mm-dd.log
+cat src/storage/logs/error-yyyy-mm-dd.log
+```
+
+# Helper & Utilities
+
+```python
+await async_report(f"SKIPPING: processing already attempted 3 times, answer - {self.answer_id}", NotificationType.WARNING) # notify (google chat)
+
+get_md5("value") # md5 hash
+
+now() # based on app timezone
+to_app_timezone(date) # convert date to app tz
 ```
 
 ## Task Scheduling
