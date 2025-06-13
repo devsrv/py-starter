@@ -1,22 +1,11 @@
 import schedule
 import time
 import logging
-from datetime import datetime
 
-SCHEDULAR_LOG_FILE = '/home/sourav/apps/py-starter/scheduler.log' #TODO: get from env
-
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(SCHEDULAR_LOG_FILE),
-        logging.StreamHandler()
-    ]
-)
+logger = logging.getLogger(__name__)
 
 def job():
-    logging.info("Job executed successfully!")
+    logger.info("Job executed successfully!")
     print("Running scheduled job...")
 
 def daily_backup():
@@ -34,7 +23,7 @@ schedule.every().monday.do(weekly_report)
 schedule.every().wednesday.at("13:15").do(weekly_report)
 
 # Keep the script running
-logging.info("Scheduler started")
+logger.info("Scheduler started")
 
 while True:
     schedule.run_pending()

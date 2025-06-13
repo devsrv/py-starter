@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo
+from pathlib import Path
 
 load_dotenv()
 
@@ -33,7 +34,7 @@ class Config:
                 'level': 'ERROR',
                 'formatter': 'standard',
                 'class': 'logging.FileHandler',
-                'filename': 'app_errors.log',
+                'filename': 'src/storage/logs/app_errors.log',
                 'mode': 'a',
             },
         },
@@ -86,3 +87,9 @@ class Config:
                 
         if errors:
             raise ValueError(f"Configuration errors: {', '.join(errors)}")
+        
+    @classmethod
+    def get_absolute_path(cls, relative_path: str) -> Path:
+        # Get the project root (assuming this function is in a file within the project)
+        project_root = Path(__file__).parent.parent  # Adjust based on your file location
+        return project_root / relative_path

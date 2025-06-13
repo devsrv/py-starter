@@ -37,6 +37,12 @@ sudo apt update
 sudo systemctl status redis
 ```
 
+### Check app error logs
+
+```bash
+cat src/storage/logs/app_errors.log
+```
+
 ## Task Scheduling
 
 ### Find your venv python path
@@ -50,7 +56,7 @@ which python # inside code root while your venv is activated
 ### Run while local development
 
 ```bash
-/home/sourav/apps/py-starter/venv/bin/python /home/sourav/apps/py-starter/src/schedule/tasks.py
+python -m src.schedule.tasks
 ```
 
 ### Setup Cron in Production
@@ -59,7 +65,7 @@ which python # inside code root while your venv is activated
 crontab -e
 
 # add this line at the bottom
-/home/sourav/apps/py-starter/venv/bin/python /home/sourav/apps/py-starter/src/schedule/tasks.py >> /var/log/scheduler.log 2>&1
+* * * * * cd /home/sourav/apps/py-starter && /home/sourav/apps/py-starter/venv/bin/python -m src.schedule.tasks >> /var/log/scheduler.log 2>&1
 
 # check cron logs
 cat /var/log/scheduler.log
