@@ -9,7 +9,7 @@ load_dotenv()
 class Config:
     APP_NAME = os.getenv('APP_NAME', 'My APP')
     APP_MODE = os.getenv('APP_MODE', 'development')
-    APP_DEBUG = os.getenv('APP_DEBUG', False)
+    APP_DEBUG = os.getenv('APP_DEBUG', 'True').lower() in ('true', '1', 'yes')
     DEBUG = APP_MODE != 'production' and APP_DEBUG
     
     TZ = ZoneInfo(os.getenv('TZ', 'America/New_York'))
