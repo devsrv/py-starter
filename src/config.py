@@ -9,7 +9,8 @@ load_dotenv()
 class Config:
     APP_NAME = os.getenv('APP_NAME', 'My APP')
     APP_MODE = os.getenv('APP_MODE', 'development')
-    DEBUG = APP_MODE != 'production'
+    APP_DEBUG = os.getenv('APP_DEBUG', False)
+    DEBUG = APP_MODE != 'production' and APP_DEBUG
     
     TZ = ZoneInfo(os.getenv('TZ', 'America/New_York'))
     
@@ -55,14 +56,20 @@ class Config:
         'loggers': {
             '': {  # Root logger
                 'handlers': ['console', 'file_daily', 'error_daily'],
-                'level': LOG_LEVEL,
+                'level': 'DEBUG' if DEBUG else 'INFO', # Only debug YOUR app in debug mode
                 'propagate': False
             },
             'fastapi': {
                 'handlers': ['console', 'file_daily'],
                 'level': 'INFO',
                 'propagate': False
-            }
+            },
+            # Suppress third-party debug logs
+            'openai': {
+                'handlers': ['file_daily'],  # Only log to file, not console
+                'level': 'WARNING',  # Only show warnings and errors
+                'propagate': False
+            },
         }
     }
     
