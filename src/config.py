@@ -13,7 +13,7 @@ class Config:
     
     TZ = ZoneInfo(os.getenv('TZ', 'America/New_York'))
     
-    LOG_DIR = Path('src/storage/logs')
+    LOG_DIR = Path('storage/logs')
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     LOG_LEVEL = 'DEBUG' if DEBUG else 'INFO'
     

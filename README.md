@@ -48,8 +48,8 @@ sudo systemctl status redis
 ### Check app logs
 
 ```bash
-cat src/storage/logs/app-yyyy-mm-dd.log
-cat src/storage/logs/error-yyyy-mm-dd.log
+cat storage/logs/app-yyyy-mm-dd.log
+cat storage/logs/error-yyyy-mm-dd.log
 ```
 
 ### Helper & Utilities

@@ -1,9 +1,9 @@
 import logging
-from .config import Config
-from .report.notify import async_report, NotificationType
+from ..config import Config
+from ..report.notify import async_report, NotificationType
 from datetime import timedelta
-from .cache.redis import RedisCache
-from .db.store import MongoDBClient
+from ..cache.redis import RedisCache
+from ..db.store import MongoDBClient
 
 # Configure logging
 logger = logging.getLogger(__name__) # __name__ or could be fastapi etc. as configured in Config.LOGGING
