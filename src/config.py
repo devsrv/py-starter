@@ -89,7 +89,7 @@ class Config:
     
     HTTP_SECRET = os.getenv('HTTP_SECRET')
     
-    GOOGLE_CHAT_DEV_TEAM_WEBHOOK = os.getenv('GOOGLE_CHAT_DEV_TEAM_WEBHOOK')
+    GOOGLE_CHAT_DEV_TEAM_WEBHOOK: str = os.getenv('GOOGLE_CHAT_DEV_TEAM_WEBHOOK', '')
     
     # CORS configuration
     ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', '')

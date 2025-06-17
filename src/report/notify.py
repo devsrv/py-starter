@@ -3,7 +3,6 @@ import aiohttp
 import logging
 from ..config import Config
 from enum import Enum, unique
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +14,7 @@ class NotificationType(Enum):
     EXCEPTION = "EXCEPTION"
     EMERGENCY = "EMERGENCY"
 
-async def async_report(message, notification_type: NotificationType=NotificationType.INFO, webhook_url=Config.GOOGLE_CHAT_DEV_TEAM_WEBHOOK):
+async def async_report(message: str, notification_type: NotificationType=NotificationType.INFO, webhook_url: str=Config.GOOGLE_CHAT_DEV_TEAM_WEBHOOK):
     """
     Send a notification to Google Chat
     
@@ -88,7 +87,7 @@ async def async_report(message, notification_type: NotificationType=Notification
 def report(
     message: str, 
     notification_type: NotificationType = NotificationType.INFO, 
-    webhook_url: Optional[str] = None
+    webhook_url: str=Config.GOOGLE_CHAT_DEV_TEAM_WEBHOOK
 ) -> bool:
     """
     Synchronous wrapper for backward compatibility.
