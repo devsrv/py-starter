@@ -69,24 +69,6 @@ async def global_exception_handler(request, exc):
 
 @app.get("/health")
 async def health():
-    file_manager = FileManager()
-    
-    content = b"Hello, World! This is a test file."
-    success = await file_manager.upload("test/hello.txt", content, metadata={"author": "Python Script"})
-    print(f"Upload successful: {success}")
-    
-    # Check if file exists
-    exists = await file_manager.exists("test/hello.txt")
-    print(f"File exists: {exists}")
-    
-    # Get file size
-    if exists:
-        file_size = await file_manager.size("test/hello.txt")
-        print(f"File size: {file_size} bytes")
-    
-    copied = await file_manager.copy('test/hello.txt', 'test/hello_copy.txt', source_provider=StorageProvider.S3, dest_provider=StorageProvider.LOCAL)
-    print(f"File copied: {copied}")
-    
     return JSONResponse(content={
         "status": "healthy",
         "mode": Config.APP_MODE,
