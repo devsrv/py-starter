@@ -1,16 +1,14 @@
+from boot import app_boot
+from src.filesystem.file_manager import FileManager, StorageProvider
 from src.config import Config
 from src.utils import now
 from fastapi import FastAPI, Header, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-import logging.config
+import logging
 from typing import AsyncGenerator
 from src.models.api_request import ApiRequest
-
-# Configure logging
-logging.config.dictConfig(Config.LOGGING)
-logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -19,7 +17,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Handles startup and shutdown events.
     """
     # Startup
-    # await processor.initialize()
+    await app_boot()
+    logger = logging.getLogger(__name__)
     Config.validate()
     logger.info(f"Starting API in {Config.APP_MODE} mode")
     
@@ -70,6 +69,24 @@ async def global_exception_handler(request, exc):
 
 @app.get("/health")
 async def health():
+    file_manager = FileManager()
+    
+    content = b"Hello, World! This is a test file."
+    success = await file_manager.upload("test/hello.txt", content, metadata={"author": "Python Script"})
+    print(f"Upload successful: {success}")
+    
+    # Check if file exists
+    exists = await file_manager.exists("test/hello.txt")
+    print(f"File exists: {exists}")
+    
+    # Get file size
+    if exists:
+        file_size = await file_manager.size("test/hello.txt")
+        print(f"File size: {file_size} bytes")
+    
+    copied = await file_manager.copy('test/hello.txt', 'test/hello_copy.txt', source_provider=StorageProvider.S3, dest_provider=StorageProvider.LOCAL)
+    print(f"File copied: {copied}")
+    
     return JSONResponse(content={
         "status": "healthy",
         "mode": Config.APP_MODE,
