@@ -2,7 +2,7 @@
 
 🚀 Production-ready FastAPI template with daily log rotation, type safety, MongoDB/Redis support, task scheduling, and comprehensive error handling.
 
-**Features:** Auto API docs • Daily logs • Type validation • API auth • Background jobs • Health checks
+**Features:** Auto API docs • Daily logs • Type validation • API auth • Background jobs • Health checks • Cloud and local File System
 
 Perfect for microservices and data processing APIs. Skip the boilerplate, start building features.
 

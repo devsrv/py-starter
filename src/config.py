@@ -1,4 +1,4 @@
-from .daily_file_handler import DailyFileHandler
+from src.logging.daily_file_handler import DailyFileHandler
 import os
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo
@@ -63,23 +63,23 @@ class Config:
                 'handlers': ['console', 'file_daily'],
                 'level': 'INFO',
                 'propagate': False
-            },
-            # Suppress third-party debug logs
-            'openai': {
-                'handlers': ['file_daily'],  # Only log to file, not console
-                'level': 'WARNING',  # Only show warnings and errors
-                'propagate': False
-            },
+            }
         }
     }
     
-    # DigitalOcean Spaces configuration
     DO_SPACES_KEY = os.getenv('DO_SPACES_KEY')
     DO_SPACES_SECRET = os.getenv('DO_SPACES_SECRET')
     DO_SPACES_ENDPOINT = os.getenv('DO_SPACES_ENDPOINT','https://nyc3.digitaloceanspaces.com')
     DO_SPACES_REGION = os.getenv('DO_SPACES_REGION', 'nyc3')
     DO_SPACES_BUCKET = os.getenv('DO_SPACES_BUCKET', 'your-bucket')
     DO_SPACES_BUCKET_OLD = os.getenv('DO_SPACES_BUCKET_OLD', 'your-bucket')
+    
+    AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
+    AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+    AWS_REGION_NAME = os.getenv('AWS_REGION_NAME', 'us-east-1')
+    AWS_S3_BUCKET_NAME = os.getenv('AWS_S3_BUCKET_NAME')
+    
+    LOCAL_STORAGE_FULL_PATH = './storage/app/' + os.getenv('LOCAL_STORAGE_PATH', 'media')
     
     MONGO_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017')
     MONGO_DB_NAME = os.getenv('MONGO_DB_NAME', 'aw_assessment')
@@ -96,9 +96,6 @@ class Config:
 
     # Concurrency configuration
     MAX_CONCURRENT_TASKS = int(os.getenv('MAX_CONCURRENT_TASKS', 5))
-    
-    # OpenAI configuration
-    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
     
     @classmethod
     def validate(cls):

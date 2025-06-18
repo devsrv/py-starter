@@ -24,6 +24,17 @@
 			}
 		},
 		{
+			"label": "Install Packages",
+			"type": "shell",
+			"command": "pip install -r requirements.txt",
+			"group": "test",
+			"problemMatcher": [],
+			"presentation": {
+				"reveal": "always",
+				"panel": "new"
+			}
+		},
+		{
 			"label": "Lint",
 			"type": "shell",
 			"command": "./.scripts/mypy.sh",

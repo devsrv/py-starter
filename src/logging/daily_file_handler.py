@@ -1,8 +1,6 @@
 import logging
-import logging.config
 from datetime import datetime
 from pathlib import Path
-import os
 
 class DailyFileHandler(logging.FileHandler):
     """Custom handler that creates a new log file each day with date in filename"""
