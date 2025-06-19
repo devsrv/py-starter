@@ -129,7 +129,7 @@ print(f"File copied in local: {copied}")
 
 """ Performance improvements with async """
 async def example_performance_improvements():
-    file_manager = await async_app_boot()
+    file_manager = FileManager()
 
     # Process multiple files concurrently instead of sequentially
     async def process_file(file_path):

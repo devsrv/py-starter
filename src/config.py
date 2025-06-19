@@ -1,3 +1,4 @@
+from src.filesystem.file_manager import StorageProvider
 from src.logging.daily_file_handler import DailyFileHandler
 import os
 from dotenv import load_dotenv
@@ -67,6 +68,8 @@ class Config:
         }
     }
     
+    DEFAULT_FILESYSTEM = os.getenv('DEFAULT_FILESYSTEM', 'local').lower()
+    
     DO_SPACES_KEY = os.getenv('DO_SPACES_KEY')
     DO_SPACES_SECRET = os.getenv('DO_SPACES_SECRET')
     DO_SPACES_ENDPOINT = os.getenv('DO_SPACES_ENDPOINT','https://nyc3.digitaloceanspaces.com')
@@ -101,6 +104,11 @@ class Config:
     def validate(cls):
         """Validate critical configuration"""
         errors = []
+        
+        storage_providers = {storage.value for storage in StorageProvider}
+        
+        if cls.DEFAULT_FILESYSTEM not in storage_providers:
+            errors.append(f"Invalid DEFAULT_FILESYSTEM: {cls.DEFAULT_FILESYSTEM}. Must be one of {storage_providers}")
         
         if cls.APP_MODE == 'production':
             if not cls.HTTP_SECRET:
