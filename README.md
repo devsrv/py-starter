@@ -1,6 +1,6 @@
 # FastAPI Production Starter
 
-🚀 Production-ready FastAPI template with daily log rotation, type safety, MongoDB/Redis support, task scheduling, and comprehensive error handling.
+🚀 Production-ready FastAPI template with daily log rotation, type safety, MongoDB/Mysql/Redis support, task scheduling, and comprehensive error handling.
 
 **Features:** Auto API docs • Daily logs • Type validation • API auth • Background jobs • Health checks • Cloud and local File System
 
@@ -56,6 +56,35 @@ cat storage/logs/error-yyyy-mm-dd.log
 ## Important
 
 make sure to call `await app_boot()` in your entry file (if not using `src.app.main.py` and `app.py` as it is already done there)
+
+### DB Usage
+
+```python
+async def main():
+    await app_boot()
+
+    mongo = MongoDBClient()
+    mysql = MySQLClient()
+
+    try:
+        await mongo.connect()
+        await mysql.create_pool()
+
+        store1 = ExampleManager1(mongo=mongo, collection_name="ai_batches")
+        store2 = ExampleManager2(db=mysql)
+
+        # use the db managers
+        await task1(store1, store2)
+        await task2(store2)
+
+    except Exception as e:
+        logger.error(f"Critical error in batch generate execution: {str(e)}")
+        await async_report(f"Critical error in batch generate execution: {str(e)}", NotificationType.ERROR)
+        raise
+    finally:
+        await mongo.close()
+        await mysql.close_pool()
+```
 
 ### Helper & Utilities
 
