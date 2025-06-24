@@ -1,13 +1,7 @@
 from typing import Dict, List, Optional, Union, BinaryIO, Any
+from src.filesystem.providers import StorageProvider
 from src.filesystem.cloud_storage_interface import CloudStorageInterface, FileInfo, FolderInfo
-from enum import Enum
 import asyncio
-
-class StorageProvider(Enum):
-    """Supported storage providers."""
-    LOCAL = "local"
-    S3 = "s3"
-    # Add more providers as needed, e.g., AZURE, S3_BACKUP etc.
 
 class FileManager:
     """

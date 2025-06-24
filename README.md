@@ -134,9 +134,14 @@ Refer `src.filesystem.file_manager.py` to check all supported methods
 
 file_manager = FileManager() # using default filemanager driver (check boot.py)
 
-# To manually register or use a driver
-s3_storage = S3Storage()
-await file_manager.add_provider(StorageProvider.S3, s3_storage, set_as_default=True)
+# To manually register or use a driver (preferably in boot.py)
+minio_storage = S3CompatibleStorage.for_minio(
+    bucket_name=Config.MINIO_BUCKET,
+    endpoint_url=Config.MINIO_ENDPOINT,
+    access_key=Config.MINIO_ACCESS_KEY,
+    secret_key=Config.MINIO_SECRET_KEY,
+)
+await file_manager.add_provider(StorageProvider.MINIO, minio_storage, set_as_default=True)
 
 # Upload
 content = b"Hello, World! This is a test file."

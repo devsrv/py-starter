@@ -7,17 +7,123 @@ from src.filesystem.cloud_storage_interface import CloudStorageInterface, FileIn
 from concurrent.futures import ThreadPoolExecutor
 import aioboto3
 
-class S3Storage(CloudStorageInterface):
-    """Amazon S3 storage implementation."""
+class S3CompatibleStorage(CloudStorageInterface):
+    """S3-compatible storage implementation supporting AWS S3, DigitalOcean Spaces, MinIO, etc."""
     
-    def __init__(self, bucket_name: str|None = Config.AWS_S3_BUCKET_NAME, max_workers: int = 10):
-        self.bucket_name = bucket_name or 'default-bucket'
-        self.session = aioboto3.Session(
-            aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY,
-            region_name=Config.AWS_REGION_NAME
-        )
+    # Predefined endpoints for popular S3-compatible services
+    ENDPOINTS: Dict[str, str|None] = {
+        'aws': None,  # Uses default AWS endpoints
+        'digitalocean': 'https://{region}.digitaloceanspaces.com',
+        'minio': 'http://localhost:9000',  # Default MinIO endpoint
+        'wasabi': 'https://s3.{region}.wasabisys.com',
+        'backblaze': 'https://s3.{region}.backblazeb2.com',
+        'linode': 'https://{region}.linodeobjects.com',
+    }
+    
+    def __init__(self, 
+                 bucket_name: str = None, 
+                 provider: str = 'aws',
+                 endpoint_url: str = None,
+                 region: str = None,
+                 access_key_id: str = None,
+                 secret_access_key: str = None,
+                 max_workers: int = 10,
+                 use_ssl: bool = True,
+                 verify_ssl: bool = True):
+        """
+        Initialize S3-compatible storage.
+        
+        Args:
+            bucket_name: Name of the bucket/space
+            provider: Service provider ('aws', 'digitalocean', 'minio', 'wasabi', etc.)
+            endpoint_url: Custom endpoint URL (overrides provider default)
+            region: Region/datacenter location
+            access_key_id: Access key ID
+            secret_access_key: Secret access key
+            max_workers: Max concurrent operations
+            use_ssl: Whether to use HTTPS
+            verify_ssl: Whether to verify SSL certificates
+        """
+        # Set defaults from config or parameters
+        self.bucket_name = bucket_name or Config.AWS_S3_BUCKET_NAME or 'default-bucket'
+        self.provider = provider.lower()
+        self.region = region or Config.AWS_REGION_NAME or 'us-east-1'
+        
+        # Determine endpoint URL
+        if endpoint_url:
+            self.endpoint_url = endpoint_url
+        elif self.provider in self.ENDPOINTS:
+            endpoint_template = self.ENDPOINTS[self.provider]
+            if endpoint_template:
+                self.endpoint_url = endpoint_template.format(region=self.region)
+            else:
+                self.endpoint_url = None  # AWS uses default endpoints
+        else:
+            raise ValueError(f"Unknown provider '{self.provider}'. Please specify endpoint_url.")
+        
+        # Set up credentials
+        self.access_key_id = access_key_id or Config.AWS_ACCESS_KEY_ID
+        self.secret_access_key = secret_access_key or Config.AWS_SECRET_ACCESS_KEY
+        
+        if not self.access_key_id or not self.secret_access_key:
+            raise ValueError("Access key ID and secret access key are required")
+        
+        # Create session with custom endpoint
+        session_kwargs = {
+            'aws_access_key_id': self.access_key_id,
+            'aws_secret_access_key': self.secret_access_key,
+            'region_name': self.region
+        }
+        
+        self.session = aioboto3.Session(**session_kwargs)
+        
+        # Client configuration
+        self.client_config = {
+            'use_ssl': use_ssl,
+            'verify': verify_ssl
+        }
+        
+        if self.endpoint_url:
+            self.client_config['endpoint_url'] = self.endpoint_url
+        
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
+    
+    @classmethod
+    def for_digitalocean(cls, space_name: str, region: str, access_key: str, secret_key: str, **kwargs: Any) -> 'S3CompatibleStorage':
+        """Convenience method for DigitalOcean Spaces."""
+        return cls(
+            bucket_name=space_name,
+            provider='digitalocean',
+            region=region,
+            access_key_id=access_key,
+            secret_access_key=secret_key,
+            **kwargs
+        )
+    
+    @classmethod
+    def for_minio(cls, bucket_name: str, endpoint_url: str, access_key: str, secret_key: str, **kwargs: Any) -> 'S3CompatibleStorage':
+        """Convenience method for MinIO."""
+        return cls(
+            bucket_name=bucket_name,
+            provider='minio',
+            endpoint_url=endpoint_url,
+            access_key_id=access_key,
+            secret_access_key=secret_key,
+            use_ssl=endpoint_url.startswith('https'),
+            **kwargs
+        )
+    
+    @classmethod
+    def for_wasabi(cls, bucket_name: str, region: str, access_key: str, secret_key: str, **kwargs: Any) -> 'S3CompatibleStorage':
+        """Convenience method for Wasabi."""
+        return cls(
+            bucket_name=bucket_name,
+            provider='wasabi',
+            region=region,
+            access_key_id=access_key,
+            secret_access_key=secret_key,
+            **kwargs
+        )
     
     async def upload(self, file_path: str, content: Union[bytes, BinaryIO], 
                     content_type: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> bool:
@@ -35,7 +141,7 @@ class S3Storage(CloudStorageInterface):
             elif not hasattr(content, "read"):
                 raise TypeError("content must be bytes, bytearray, memoryview, or a file-like object")
             
-            async with self.session.client('s3') as s3:
+            async with self.session.client('s3', **self.client_config) as s3:
                 await s3.upload_fileobj(content, self.bucket_name, file_path, ExtraArgs=extra_args)
             return True
         except ClientError:
@@ -43,7 +149,7 @@ class S3Storage(CloudStorageInterface):
     
     async def download(self, file_path: str) -> bytes:
         try:
-            async with self.session.client('s3') as s3:
+            async with self.session.client('s3', **self.client_config) as s3:
                 response = await s3.get_object(Bucket=self.bucket_name, Key=file_path)
                 body = response['Body']
                 return await body.read()
@@ -52,7 +158,7 @@ class S3Storage(CloudStorageInterface):
     
     async def delete(self, file_path: str) -> bool:
         try:
-            async with self.session.client('s3') as s3:
+            async with self.session.client('s3', **self.client_config) as s3:
                 await s3.delete_object(Bucket=self.bucket_name, Key=file_path)
             return True
         except ClientError:
@@ -60,7 +166,7 @@ class S3Storage(CloudStorageInterface):
     
     async def exists(self, file_path: str) -> bool:
         try:
-            async with self.session.client('s3') as s3:
+            async with self.session.client('s3', **self.client_config) as s3:
                 await s3.head_object(Bucket=self.bucket_name, Key=file_path)
             return True
         except ClientError:
@@ -68,7 +174,7 @@ class S3Storage(CloudStorageInterface):
     
     async def size(self, file_path: str) -> int:
         try:
-            async with self.session.client('s3') as s3:
+            async with self.session.client('s3', **self.client_config) as s3:
                 response = await s3.head_object(Bucket=self.bucket_name, Key=file_path)
                 return response['ContentLength']
         except ClientError:
@@ -82,7 +188,7 @@ class S3Storage(CloudStorageInterface):
             delimiter = '' if recursive else '/'
             files: List[FileInfo] = []
             
-            async with self.session.client('s3') as s3:
+            async with self.session.client('s3', **self.client_config) as s3:
                 paginator = s3.get_paginator('list_objects_v2')
                 async for page in paginator.paginate(
                     Bucket=self.bucket_name,
@@ -120,7 +226,7 @@ class S3Storage(CloudStorageInterface):
             
             folders: List[FolderInfo] = []
             
-            async with self.session.client('s3') as s3:
+            async with self.session.client('s3', **self.client_config) as s3:
                 response = await s3.list_objects_v2(
                     Bucket=self.bucket_name,
                     Prefix=path,
@@ -157,7 +263,7 @@ class S3Storage(CloudStorageInterface):
     
     async def get_file_info(self, file_path: str) -> Optional[FileInfo]:
         try:
-            async with self.session.client('s3') as s3:
+            async with self.session.client('s3', **self.client_config) as s3:
                 response = await s3.head_object(Bucket=self.bucket_name, Key=file_path)
                 return FileInfo(
                     name=file_path.split('/')[-1],
@@ -175,7 +281,7 @@ class S3Storage(CloudStorageInterface):
         try:
             if not folder_path.endswith('/'):
                 folder_path += '/'
-            async with self.session.client('s3') as s3:
+            async with self.session.client('s3', **self.client_config) as s3:
                 await s3.put_object(Bucket=self.bucket_name, Key=folder_path)
             return True
         except ClientError:
@@ -194,7 +300,7 @@ class S3Storage(CloudStorageInterface):
                 folder_path += '/'
             
             objects_to_delete = []
-            async with self.session.client('s3') as s3:
+            async with self.session.client('s3', **self.client_config) as s3:
                 paginator = s3.get_paginator('list_objects_v2')
                 async for page in paginator.paginate(Bucket=self.bucket_name, Prefix=folder_path):
                     contents = page.get('Contents', [])

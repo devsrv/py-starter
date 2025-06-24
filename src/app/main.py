@@ -1,6 +1,7 @@
 import logging
 from boot import app_boot
 import asyncio
+from src.db.async_mysql import MySQLClient
 from src.config import Config
 from src.report.notify import async_report, NotificationType
 from src.utils import now
@@ -14,13 +15,15 @@ logger = logging.getLogger(__name__) # __name__ or could be fastapi etc. as conf
 async def main():
     await app_boot()
     
-    store = MongoDBClient()
+    mongo = MongoDBClient()
+    mysql = MySQLClient()
     
     try:
-        await store.connect()
+        await mongo.connect()
+        await mysql.create_pool()
         
         """For Reference"""
-        # db = MongoBatchManager(store=store, collection_name="ai_batches")
+        # db = MongoBatchManager(store=mongo, collection_name="ai_batches")
         # await process_orgs_concurrently(allowed_orgs, db)
         
     except Exception as e:
@@ -28,7 +31,8 @@ async def main():
         await async_report(f"Critical error in main execution: {str(e)}", NotificationType.ERROR)
         raise
     finally:
-        await store.close()
+        await mongo.close()
+        await mysql.close_pool()
 
 if __name__ == "__main__":
     asyncio.run(main())
