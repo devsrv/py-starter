@@ -156,6 +156,15 @@ class S3CompatibleStorage(CloudStorageInterface):
         except ClientError as e:
             raise FileNotFoundError(f"File not found: {file_path}")
     
+    async def download_to_file(self, file_path: str, local_file_path: str) -> bool:
+        """Download a file directly to a local file path (equivalent to boto3's download_file)."""
+        try:
+            async with self.session.client('s3', **self.client_config) as s3:
+                await s3.download_file(self.bucket_name, file_path, local_file_path)
+            return True
+        except ClientError:
+            return False
+    
     async def delete(self, file_path: str) -> bool:
         try:
             async with self.session.client('s3', **self.client_config) as s3:

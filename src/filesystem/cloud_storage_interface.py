@@ -35,6 +35,11 @@ class CloudStorageInterface(ABC):
         pass
     
     @abstractmethod
+    async def download_to_file(self, file_path: str, local_file_path: str) -> bool:
+        """Download a file directly to a local file path."""
+        pass
+    
+    @abstractmethod
     async def download(self, file_path: str) -> bytes:
         """Download a file from the storage."""
         pass

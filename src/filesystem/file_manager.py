@@ -165,9 +165,17 @@ class FileManager:
     async def download_to_file(self, file_path: str, local_file_path: str, 
                         provider: Optional[StorageProvider] = None) -> None:
         """Download to a local file."""
-        content = await self.download(file_path, provider)
-        with open(local_file_path, 'wb') as f:
-            f.write(content)
+        storage_provider = self.get_provider(provider.value if provider else None)
+        # Use direct download if available, fallback to memory download
+        if hasattr(storage_provider, 'download_to_file'):
+            success = await storage_provider.download_to_file(file_path, local_file_path)
+            if not success:
+                raise FileNotFoundError(f"Failed to download file: {file_path}")
+        else:
+            # Fallback to existing method for providers that don't support direct download
+            content = await self.download(file_path, provider)
+            with open(local_file_path, 'wb') as f:
+                f.write(content)
     
     async def delete(self, file_path: str, provider: Optional[StorageProvider] = None) -> bool:
         """Delete a file using specified or default provider."""

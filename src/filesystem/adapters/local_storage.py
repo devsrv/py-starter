@@ -60,6 +60,23 @@ class LocalStorage(CloudStorageInterface):
         
         async with aiofiles.open(full_path, 'rb') as f:
             return await f.read()
+        
+    async def download_to_file(self, file_path: str, local_file_path: str) -> bool:
+        full_path = self._get_full_path(file_path)
+        if not await aiofiles.os.path.exists(full_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+        
+        try:
+            async with aiofiles.open(full_path, 'rb') as src_file:
+                async with aiofiles.open(local_file_path, 'wb') as dest_file:
+                    while True:
+                        chunk = await src_file.read(1024 * 1024)  # Read in 1MB chunks
+                        if not chunk:
+                            break
+                        await dest_file.write(chunk)
+            return True
+        except Exception:
+            return False
     
     async def delete(self, file_path: str) -> bool:
         try:

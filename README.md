@@ -143,6 +143,21 @@ minio_storage = S3CompatibleStorage.for_minio(
 )
 await file_manager.add_provider(StorageProvider.MINIO, minio_storage, set_as_default=True)
 
+# use multiple adaptars on the fly
+filesystem = FileManager()
+resume_filesys = self.filesystem.get_provider(StorageProvider.DO_SPACES.value)
+
+# download remote file to tmp
+file_path = "media/abc.txt"
+temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=Path(file_path).suffix)
+temp_path = temp_file.name
+temp_file.close()
+
+await file_manager.download_to_file(
+    file_path=file_path,
+    local_file_path=temp_path
+)
+
 # Upload
 content = b"Hello, World! This is a test file."
 success = await file_manager.upload("test/hello.txt", content, metadata={"author": "Python Script"})
