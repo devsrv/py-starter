@@ -1,5 +1,4 @@
 from src.filesystem.providers import StorageProvider
-from src.filesystem.file_manager import StorageProvider
 from src.logging.daily_file_handler import DailyFileHandler
 import os
 from dotenv import load_dotenv
@@ -7,6 +6,7 @@ from zoneinfo import ZoneInfo
 from pathlib import Path
 
 load_dotenv()
+
 
 class Config:
     APP_NAME = os.getenv('APP_NAME', 'My APP')
@@ -58,7 +58,7 @@ class Config:
         'loggers': {
             '': {  # Root logger
                 'handlers': ['console', 'file_daily', 'error_daily'],
-                'level': 'DEBUG' if DEBUG else 'INFO', # Only debug YOUR app in debug mode
+                'level': 'DEBUG' if DEBUG else 'INFO',  # Only debug YOUR app in debug mode
                 'propagate': False
             },
             'fastapi': {

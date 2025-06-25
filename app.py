@@ -1,14 +1,17 @@
 from boot import app_boot
-from src.filesystem.file_manager import FileManager, StorageProvider
 from src.config import Config
 from src.utils import now
-from fastapi import FastAPI, Header, HTTPException, Depends
+from fastapi import FastAPI, Header, HTTPException, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
 from typing import AsyncGenerator
 from src.models.api_request import ApiRequest
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -27,6 +30,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Shutdown
     # await processor.cleanup()
     logger.info("Shutting down API")
+
     
 def get_allowed_origins():
     origins_str = Config.ALLOWED_ORIGINS
@@ -36,11 +40,15 @@ def get_allowed_origins():
     origins = [origin.strip() for origin in origins_str.split(",")]
     return [origin for origin in origins if origin]
 
+
 allowed_origins = get_allowed_origins()
 if Config.APP_MODE == "production" and not allowed_origins:
     raise ValueError("ALLOWED_ORIGINS must be set in production")
 
 app = FastAPI(title=f"{Config.APP_NAME} API", lifespan=lifespan)
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     
 app.add_middleware(
     CORSMiddleware,
@@ -50,7 +58,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-async def verify_api_key(x_api_key: str|None = Header(None)):
+
+async def verify_api_key(x_api_key: str | None=Header(None)):
     if Config.HTTP_SECRET is None:
         raise HTTPException(status_code=500, detail="API key not configured")
     if x_api_key is None:
@@ -61,22 +70,27 @@ async def verify_api_key(x_api_key: str|None = Header(None)):
     if not secrets.compare_digest(x_api_key, Config.HTTP_SECRET):
         raise HTTPException(status_code=401, detail="Invalid API key")
     return x_api_key
+
     
 @app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
+async def global_exception_handler(request: Request, exc):
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    return JSONResponse(status_code=500,content={"error": "Internal server error"})
+    return JSONResponse(status_code=500, content={"error": "Internal server error"})
+
 
 @app.get("/health")
-async def health():
+@limiter.limit("2/minute")
+async def health(request: Request, response: Response):
     return JSONResponse(content={
         "status": "healthy",
         "mode": Config.APP_MODE,
         "timestamp": now().isoformat()
     }, status_code=200)
 
+
 @app.post("/test")
-async def test_fn(request: ApiRequest, api_key: str = Depends(verify_api_key)):
+@limiter.limit("5/minute")
+async def test_fn(request: ApiRequest, response: Response, api_key: str=Depends(verify_api_key)):
     try:
         # Simulate some processing logic
         
