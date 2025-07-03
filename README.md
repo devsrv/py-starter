@@ -60,30 +60,49 @@ make sure to call `await app_boot()` in your entry file (if not using `src.app.m
 ### DB Usage
 
 ```python
+from src.db.async_mongo import mongo_manager, get_collection
+from src.db.async_mysql import mysql_manager, fetch_one, execute_query, execute_transaction
+
 async def main():
     await app_boot()
 
-    mongo = MongoDBClient()
-    mysql = MySQLClient()
-
     try:
-        await mongo.connect()
-        await mysql.create_pool()
+        await mongo_manager.initialize()
+        await mysql_manager.initialize()
 
-        store1 = ExampleManager1(mongo=mongo, collection_name="ai_batches")
-        store2 = ExampleManager2(db=mysql)
+        """
+        ======================================================
+        Mongo Query
+        ======================================================
+        """
+        users_collection = await get_collection("users") # using default database
+        user = users_collection.find_one({"_id": user_id})
 
-        # use the db managers
-        await task1(store1, store2)
-        await task2(store2)
+        analytics_db = mongo_manager.get_database("analytics") # use a different database
+        user_stats = await analytics_db.user_stats.find_one({"user_id": user_id})
+
+        """
+        ======================================================
+        Mysql Query
+        ======================================================
+        """
+        user = await fetch_one("SELECT * FROM users WHERE id = %s", (user_id,))
+        users = await execute_query("SELECT * FROM users WHERE active = %s", (True,))
+
+        queries = [
+            ("UPDATE accounts SET balance = balance - %s WHERE id = %s", (amount, from_account)),
+            ("INSERT INTO transactions (from_account, to_account, amount) VALUES (%s, %s, %s)",
+            (from_account, to_account, amount))
+        ]
+        await execute_transaction(queries)
 
     except Exception as e:
         logger.error(f"Critical error in batch generate execution: {str(e)}")
         await async_report(f"Critical error in batch generate execution: {str(e)}", NotificationType.ERROR)
         raise
     finally:
-        await mongo.close()
-        await mysql.close_pool()
+        await mongo_manager.close()
+        await mysql_manager.close()
 ```
 
 ### Helper & Utilities
@@ -93,6 +112,7 @@ await async_report("Message ...", NotificationType.WARNING) # notify (google cha
 
 get_md5("value") # md5 hash
 
+utcnow() # based on utc
 now() # based on app timezone
 to_app_timezone(date) # convert date to app tz
 ```
@@ -213,5 +233,6 @@ async def example_performance_improvements():
 ## TODO
 
 -   Route Middleware
+-   auto clean older log files error + app
 -   cli arg based commands
 -   email
