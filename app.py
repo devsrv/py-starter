@@ -22,7 +22,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup
     await app_boot()
     logger = logging.getLogger(__name__)
-    Config.validate()
     logger.info(f"Starting API in {Config.APP_MODE} mode")
     
     yield  # App is running
