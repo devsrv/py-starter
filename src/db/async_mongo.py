@@ -4,6 +4,7 @@ from typing import Any, Optional
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection, AsyncIOMotorDatabase
 from src.report.notify import async_report, NotificationType
 from src.config import Config
+import backoff
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -57,11 +58,13 @@ class MongoDBManager:
                 connectTimeoutMS=10000,
                 serverSelectionTimeoutMS=20000,
                 retryWrites=True,
-                retryReads=True
+                retryReads=True,
+                # w='majority',  # Write concern for durability
+                # readPreference='primaryPreferred'
             )
             
             # Test connection
-            await asyncio.wait_for(self.client.admin.command('ping'), timeout=5.0)
+            await self._ping_with_retry()
             logger.info("Connected to MongoDB successfully")
             
             self.db = self.client[self.db_name]
@@ -74,6 +77,22 @@ class MongoDBManager:
             await async_report(f"Failed to connect to MongoDB: {e}", NotificationType.ERROR)
             await self._cleanup()
             raise
+        
+    @backoff.on_exception(
+        backoff.expo,
+        Exception,
+        max_tries=3,
+        max_time=10
+    )
+    async def _ping_with_retry(self):
+        if not self.client:
+            raise RuntimeError("MongoDB client not initialized")
+        
+        """Ping MongoDB with exponential backoff retry"""
+        await asyncio.wait_for(
+            self.client.admin.command('ping'),
+            timeout=5.0
+        )
             
     async def ensure_connected(self) -> None:
         """Ensure connection is alive, reconnect if needed"""

@@ -43,6 +43,7 @@ curl -X POST http://localhost:8000/test \
 
 ```bash
 sudo apt update
+sudo apt install redis-server
 sudo systemctl status redis
 ```
 
@@ -119,7 +120,56 @@ to_app_timezone(date) # convert date to app tz
 
 ## Task Scheduling
 
-### Find your venv python path
+#### Using decorators (recommended)
+
+```python
+from .async_scheduler import scheduler
+
+@scheduler.schedule("*/2 * * * *", name="data_sync")
+async def sync_data():
+    # async function
+
+@scheduler.schedule("0 9 * * 1-5", name="weekday_report")
+def generate_weekday_report():
+    # This is a sync function - it will run in an executor
+```
+
+#### Using convenience methods
+
+```python
+async def check_queue():
+    # ...
+
+ scheduler.everyMinute(check_queue, name="queue_check")
+ # everyMinute | everyFiveMinutes | everyTenMinutes | everyThirtyMinutes | hourly | hourlyAt | daily | dailyAt | weekly | weeklyOn | monthly | monthlyOn
+
+```
+
+#### Adding tasks with custom parameters
+
+```python
+async def send_notification(user_id: int, message: str):
+   # ...
+
+task = scheduler.add_task(
+   send_notification,
+   "0 10 * * *",  # Daily at 10 AM
+   name="daily_reminder",
+   # Arguments for the function
+   123,  # user_id
+   message="Don't forget to check your tasks!"
+)
+task.max_retries = 5
+task.retry_delay = 120  # 2 minutes
+```
+
+### Run while local development
+
+```bash
+python -m src.schedule.example_usage.py # create your own schedule task files
+```
+
+### Setup in Production
 
 ```bash
 which python # inside code root while your venv is activated
@@ -127,23 +177,7 @@ which python # inside code root while your venv is activated
 # should return something like: /home/sourav/apps/py-starter/venv/bin/python
 ```
 
-### Run while local development
-
-```bash
-python -m src.schedule.tasks
-```
-
-### Setup Cron in Production
-
-```bash
-crontab -e
-
-# add this line at the bottom
-* * * * * cd /home/sourav/apps/py-starter && /home/sourav/apps/py-starter/venv/bin/python -m src.schedule.tasks >> /var/log/scheduler.log 2>&1
-
-# check cron logs
-cat /var/log/scheduler.log
-```
+Now refer to `src/schedule/stub/README.md` and replace `/home/ubuntu/apps/aw-ai-resume-parser/venv/bin/python` with your `<which python>` path
 
 ## Filesystem
 

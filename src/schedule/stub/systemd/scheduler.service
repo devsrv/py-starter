@@ -1,0 +1,25 @@
+[Unit]
+Description=AI Resume Parser Task Scheduler
+After=network.target mongodb.service mysql.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/apps/aw-ai-resume-parser
+Environment="PATH=/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONPATH=/home/ubuntu/apps/aw-ai-resume-parser"
+ExecStart=/usr/bin/python3 -m src.schedule.tasks
+ExecStart=/home/ubuntu/apps/aw-ai-resume-parser/venv/bin/python -m src.schedule.tasks
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=resume-parser-scheduler
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
