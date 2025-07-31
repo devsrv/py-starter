@@ -5,6 +5,7 @@ from fastapi import FastAPI, Header, HTTPException, Depends, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from src.utils.performance import performance_tracker
 import logging
 from typing import AsyncGenerator
 from src.models.api_request import ApiRequest
@@ -83,7 +84,8 @@ async def health(request: Request, response: Response):
     return JSONResponse(content={
         "status": "healthy",
         "mode": Config.APP_MODE,
-        "timestamp": now().isoformat()
+        "timestamp": now().isoformat(),
+        "boot_time": performance_tracker.get_boot_time()
     }, status_code=200)
 
 
