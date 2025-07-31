@@ -1,11 +1,16 @@
 import logging.config
+from src.utils.performance import performance_tracker
 from src.filesystem.adapters.s3_compatible_storage import S3CompatibleStorage
 from src.filesystem.adapters.local_storage import LocalStorage
 from src.filesystem.file_manager import FileManager
 from src.filesystem.providers import StorageProvider
 from src.config import Config
 
+
 async def app_boot():
+    # Start tracking boot time
+    performance_tracker.start_boot()
+    
     # Validate config
     Config.validate()
 
@@ -43,7 +48,11 @@ async def app_boot():
     await file_manager.add_provider(StorageProvider.MINIO, minio_storage, set_as_default=Config.DEFAULT_FILESYSTEM == StorageProvider.MINIO.value)
     await file_manager.add_provider(StorageProvider.LOCAL, local_storage, set_as_default=Config.DEFAULT_FILESYSTEM == StorageProvider.LOCAL.value)
     
+    # Mark boot as complete
+    performance_tracker.end_boot()
+    
     # Sratup complete
     logger = logging.getLogger(__name__)
     logger.info(f"App ({Config.APP_NAME}) booted in {Config.APP_MODE} mode")
+    logger.info(f"Boot completed in {performance_tracker.get_boot_time():.3f} seconds")
     

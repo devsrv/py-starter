@@ -6,6 +6,7 @@ from src.db.async_mysql import mysql_manager, fetch_one, execute_query, execute_
 from src.config import Config
 from src.report.notify import async_report, NotificationType
 from src.cache.redis import RedisCache
+from src.utils.performance import performance_tracker
 
 # Configure logging
 logger = logging.getLogger(__name__)  # __name__ or could be fastapi etc. as configured in Config.LOGGING
@@ -19,6 +20,7 @@ async def main():
         await mysql_manager.initialize()
         
         """do something"""
+        print(f"App started in {performance_tracker.get_boot_time():.3f} seconds")
         
     except Exception as e:
         logger.error(f"Critical error in main execution: {str(e)}")
