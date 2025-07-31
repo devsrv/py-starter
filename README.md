@@ -6,23 +6,94 @@
 
 Perfect for microservices and data processing APIs. Skip the boilerplate, start building features.
 
-## Install Python & Create a new virtual environment
+## Setup
+
+### Modern Approach (Recommended)
+
+Using `uv` for faster dependency management:
+
+```shell
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create virtual environment and install dependencies
+uv venv
+
+# Install all dependencies from pyproject.toml
+uv sync
+
+# Or install with all optional dependency groups
+uv sync --all-extras
+
+# Or install specific optional groups
+uv sync --extra dev --extra types
+
+# Configure environment
+cp .env.example .env
+```
+
+### Traditional Approach
 
 ```shell
 sudo apt-get install python3-venv
 python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install -e .  # Install from pyproject.toml
+# Or with optional dependencies:
+pip install -e ".[dev,types]"
 cp .env.example .env
+```
+
+## Development
+
+### Code Quality
+
+Using `ruff` for fast linting and formatting:
+
+```shell
+# Format code
+uv run ruff format .
+
+# Lint and auto-fix
+uv run ruff check . --fix
+
+# Type checking
+uv run mypy .
+
+# All in one
+.scripts/mypy.sh
+```
+
+### Adding Dependencies
+
+```shell
+# Add a package
+uv add package-name
+
+# Add with specific version
+uv add package-name==1.2.3
+
+# Add as dev dependency
+uv add --dev package-name
 ```
 
 ## Start fastapi
 
 ```shell
+# Using uv (no venv activation needed!)
 uvicorn app:app --reload # for local development
 uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4 # in production to expose to the world
+
+# Or if you prefer to activate the venv first:
+source .venv/bin/activate
+uvicorn app:app --reload
 ```
+
+**CORS Configuration**:
+
+-   **Development**: All origins are allowed (`*`) for easier testing
+-   **Production**: You must set `ALLOWED_ORIGINS` in your `.env` file (comma-separated list)
 
 ### Endpoints:
 
