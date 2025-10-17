@@ -32,7 +32,7 @@ class MongoDBManager:
             self._connection_lock = asyncio.Lock()
             self._attrs_set = True
         
-    async def initialize(self, db_name: Optional[str]=None, max_pool_size: int=10) -> None:
+    async def initialize(self, db_name: Optional[str]=None, max_pool_size: int=20) -> None:
         """Initialize the MongoDB connection (call once at app startup)"""
         async with self._lock:
             if self._initialized:
@@ -52,13 +52,21 @@ class MongoDBManager:
         try:
             self.client = AsyncIOMotorClient(
                 self.mongo_uri,
+                readPreference='nearest',  # Read from nearest node
+                localThresholdMS=30,
                 maxPoolSize=self.max_pool_size,
-                minPoolSize=2,
-                maxIdleTimeMS=30000,
-                connectTimeoutMS=10000,
-                serverSelectionTimeoutMS=20000,
+                minPoolSize=10,
+                maxIdleTimeMS=120000,
+                waitQueueTimeoutMS=30000,  # Add this - max time to wait for connection
+                connectTimeoutMS=30000,
+                serverSelectionTimeoutMS=30000,
+                socketTimeoutMS=30000,  # Add socket timeout
                 retryWrites=True,
                 retryReads=True,
+                tls=True,  # Ensure TLS is enabled
+                tlsAllowInvalidCertificates=False,
+                # Direct connection to avoid discovery overhead
+                directConnection=False,
                 # w='majority',  # Write concern for durability
                 # readPreference='primaryPreferred'
             )

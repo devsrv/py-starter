@@ -65,6 +65,16 @@ class Config:
                 'handlers': ['console', 'file_daily'],
                 'level': 'INFO',
                 'propagate': False
+            },
+            "pymongo": {  # MongoDB driver logs
+                "handlers": ["console"],
+                "level": "WARNING",  # Only show warnings and errors
+                "propagate": False
+            },
+            "motor": {  # Motor async driver
+                "handlers": ["console"],
+                "level": "WARNING",
+                "propagate": False
             }
         }
     }
