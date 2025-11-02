@@ -9,10 +9,11 @@ from src.utils.performance import performance_tracker
 import logging
 from typing import AsyncGenerator
 from src.models.api_request import ApiRequest
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from src.utils.rate_limiter import limiter
 
+logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -22,7 +23,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """
     # Startup
     await app_boot()
-    logger = logging.getLogger(__name__)
+
     logger.info(f"Starting API in {Config.APP_MODE} mode")
     
     yield  # App is running
@@ -46,7 +47,6 @@ if Config.APP_MODE == "production" and not allowed_origins:
     raise ValueError("ALLOWED_ORIGINS must be set in production")
 
 app = FastAPI(title=f"{Config.APP_NAME} API", lifespan=lifespan)
-limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     
