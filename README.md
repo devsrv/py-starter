@@ -189,6 +189,73 @@ now() # based on app timezone
 to_app_timezone(date) # convert date to app tz
 ```
 
+## API Rate Limit
+
+### Websocket
+
+#### Basic Usage (Connection Rate Limiting)
+
+```python
+from src.utils.ws_rate_limiter import ws_rate_limit
+
+@router.websocket("/endpoint")
+@ws_rate_limit(requests=10, window=60, scope="connection")
+@require_ws_auth
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    # Your WebSocket logic here
+```
+
+**Parameters:**
+
+-   `requests`: Maximum number of connections allowed (default: 10)
+-   `window`: Time window in seconds (default: 60)
+-   `scope`: "connection" for limiting new connections, "message" for limiting messages
+
+#### Advanced Usage (Message Rate Limiting)
+
+For rate limiting individual messages within an active WebSocket connection:
+
+```python
+from src.utils.ws_rate_limiter import check_message_rate_limit
+
+@router.websocket("/endpoint")
+@require_ws_auth
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+
+            # Check rate limit for each message
+            if not await check_message_rate_limit(
+                websocket,
+                "generate",
+                requests=20,
+                window=60
+            ):
+                await websocket.send_json({
+                    "type": "error",
+                    "content": "Rate limit exceeded. Please slow down."
+                })
+                continue
+
+            # Process message...
+    except WebSocketDisconnect:
+        pass
+```
+
+### REST API
+
+Follow app.py
+
+```python
+@limiter.limit("10/minute")
+async def test(request: Request, response: Response):
+    #...
+```
+
 ## Task Scheduling
 
 #### Using decorators (recommended)
