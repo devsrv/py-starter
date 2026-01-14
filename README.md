@@ -65,7 +65,7 @@ uv run mypy .
 .scripts/mypy.sh
 ```
 
-### Adding Dependencies
+### Managing Dependencies
 
 ```shell
 # Add a package
@@ -76,6 +76,10 @@ uv add package-name==1.2.3
 
 # Add as dev dependency
 uv add --dev package-name
+
+# Update a package
+uv lock --upgrade-package <package_name>
+uv sync
 ```
 
 ## Start fastapi
