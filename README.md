@@ -8,9 +8,7 @@ Perfect for microservices and data processing APIs. Skip the boilerplate, start 
 
 ## Setup
 
-### Modern Approach (Recommended)
-
-Using `uv` for faster dependency management:
+> Using `uv` for faster dependency management:
 
 ```shell
 # Install uv
@@ -29,19 +27,6 @@ uv sync --all-extras
 uv sync --extra dev --extra types
 
 # Configure environment
-cp .env.example .env
-```
-
-### Traditional Approach
-
-```shell
-sudo apt-get install python3-venv
-python3 -m venv venv
-source venv/bin/activate
-pip install --upgrade pip
-pip install -e .  # Install from pyproject.toml
-# Or with optional dependencies:
-pip install -e ".[dev,types]"
 cp .env.example .env
 ```
 
@@ -80,6 +65,15 @@ uv add --dev package-name
 # Update a package
 uv lock --upgrade-package <package_name>
 uv sync
+```
+
+## Testing
+
+```shell
+uv run pytest --no-cov            # faster, no coverage table
+uv run pytest tests/test_app.py   # one file
+uv run pytest -k "redis or mongo" # by keyword
+uv run pytest -x                  # stop at first failure
 ```
 
 ## Start fastapi
