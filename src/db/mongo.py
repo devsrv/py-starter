@@ -1,48 +1,73 @@
 import logging
+from typing import TYPE_CHECKING, Any
+
 from pymongo import MongoClient
-from typing import Any, Optional
+from pymongo.collection import Collection
+
+if TYPE_CHECKING:
+    from pymongo.database import Database
+
 from src.config import Config
 
 logger = logging.getLogger(__name__)
 
+
+def mongo_client_kwargs() -> dict[str, Any]:
+    """TLS kwargs shared by the sync and async clients.
+
+    When MONGO_TLS is unset we pass nothing and let the URI decide
+    (`mongodb+srv://` enables TLS on its own). When it is set we force it.
+    """
+    if Config.MONGO_TLS is None:
+        return {}
+    return {"tls": Config.MONGO_TLS}
+
+
 class Mongo:
-    def __init__(self, mongo_uri: Optional[str] = None, database_name: Optional[str] = None):
+    """Small synchronous MongoDB wrapper. Prefer `src.db.async_mongo` inside async code."""
+
+    def __init__(self, mongo_uri: str | None = None, database_name: str | None = None):
         self.mongo_uri = mongo_uri or Config.MONGO_URI
         self.database_name = database_name or Config.MONGO_DB_NAME
-        
-        # Initialize MongoDB connection
+        self.client: MongoClient[Any] | None = None
+        self.db: Database[Any] | None = None
+
         self.connect()
-        
-    def connect(self):
-        """Connect to MongoDB if not already connected"""
+
+    def connect(self) -> None:
+        """Open a connection and verify it with a ping."""
         try:
-            self.client: MongoClient[Any] = MongoClient(self.mongo_uri, tls = Config.MONGO_TLS)
+            self.client = MongoClient(self.mongo_uri, **mongo_client_kwargs())
             self.db = self.client[self.database_name]
-            
-            # Test connection
-            self.client.admin.command('ping')
+            self.client.admin.command("ping")
             logger.info("Connected to MongoDB")
-            
         except Exception as e:
-            logger.error(f"Failed to connect to MongoDB: {e}")
-            raise
-        
-    def ensure_connected(self):
-        """Ensure connection is alive, reconnect if needed"""
-        try:
-            if not self.client:
-                self.connect()
-                return
-                
-            # Ping to check if connection is alive
-            self.client.admin.command('ping')
-        except Exception as e:
-            logger.warning(f"Connection check failed, {str(e)}")
+            logger.error("Failed to connect to MongoDB: %s", e)
             self.close_connection()
-            
-            
-    def close_connection(self):
+            raise
+
+    def ensure_connected(self) -> None:
+        """Ensure the connection is alive, reconnect if needed."""
+        if self.client is None:
+            self.connect()
+            return
+        try:
+            self.client.admin.command("ping")
+        except Exception as e:
+            logger.warning("Connection check failed, reconnecting: %s", e)
+            self.close_connection()
+            self.connect()
+
+    def get_collection(self, name: str) -> Collection[Any]:
+        if self.db is None:
+            msg = "MongoDB is not connected"
+            raise RuntimeError(msg)
+        return self.db[name]
+
+    def close_connection(self) -> None:
         """Close MongoDB connection"""
-        if hasattr(self, 'client'):
+        if self.client is not None:
             self.client.close()
+            self.client = None
+            self.db = None
             logger.info("MongoDB connection closed")

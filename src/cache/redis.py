@@ -1,171 +1,173 @@
-import redis.asyncio as redis
 import json
-from typing import Any, Optional, Union
+import logging
 from datetime import timedelta
+from typing import Any
+
+import redis.asyncio as redis
+
+logger = logging.getLogger(__name__)
 
 
-class RedisCacheException(Exception):
+class RedisCacheException(Exception):  # noqa: N818 - public name kept for compatibility
     """Exception raised for Redis cache errors."""
-    pass
+
+
+def _ttl_seconds(ttl: int | timedelta | None) -> int | None:
+    if isinstance(ttl, timedelta):
+        return int(ttl.total_seconds())
+    return ttl
 
 
 class RedisCache:
     """
     A Redis-based cache service with support for various data types and connection pooling.
-    Raises RedisCacheException if Redis is not connectable.
+    Every method raises RedisCacheException when Redis is unreachable or the command fails.
     """
-    def __init__(self, host: str = 'localhost', port: int = 6379, db: int = 0, 
-                 password: Optional[str] = None, **kwargs):
-        self.client = None
-        self.connection_params = {
-            'host': host,
-            'port': port,
-            'db': db,
-            'password': password,
-            'decode_responses': True,
-            **kwargs
+
+    def __init__(
+        self,
+        host: str = "localhost",
+        port: int = 6379,
+        db: int = 0,
+        password: str | None = None,
+        **kwargs: Any,
+    ):
+        self.client: redis.Redis | None = None
+        self.connection_params: dict[str, Any] = {
+            "host": host,
+            "port": port,
+            "db": db,
+            "password": password,
+            "decode_responses": True,
+            **kwargs,
         }
-        
-    async def connect(self):
-        """Initialize async Redis connection"""
+
+    @property
+    def is_connected(self) -> bool:
+        return self.client is not None
+
+    def _require_client(self) -> redis.Redis:
+        if self.client is None:
+            msg = "Redis is not connected. Call connect() first."
+            raise RedisCacheException(msg)
+        return self.client
+
+    async def connect(self) -> None:
+        """Initialize the async Redis connection and verify it with a PING."""
         try:
-            self.client = redis.from_url(
-                f"redis://{self.connection_params['host']}:{self.connection_params['port']}/{self.connection_params['db']}",
-                password=self.connection_params.get('password'),
-                decode_responses=True
-            )
-            await self.client.ping()
+            client = redis.Redis(**self.connection_params)
+            await client.ping()
+            self.client = client
         except Exception as e:
-            raise Exception(f"Failed to connect to Redis: {str(e)}")
-            
-    async def set(self, key: str, value: Any, ttl: Optional[Union[int, timedelta]] = None) -> bool:
+            self.client = None
+            msg = f"Failed to connect to Redis: {e}"
+            raise RedisCacheException(msg) from e
+
+    async def set(self, key: str, value: Any, ttl: int | timedelta | None = None) -> bool:
+        """Store a value. Non-scalar values are JSON encoded."""
         try:
-            if not isinstance(value, (str, bytes, int, float)):
-                value = json.dumps(value)
-            elif isinstance(value, (int, float)):
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
                 value = str(value)
-                
-            if isinstance(ttl, timedelta):
-                ttl = int(ttl.total_seconds())
-                
-            return await self.client.set(key, value, ex=ttl)
+            elif not isinstance(value, (str, bytes)):
+                value = json.dumps(value)
+            return bool(await self._require_client().set(key, value, ex=_ttl_seconds(ttl)))
+        except RedisCacheException:
+            raise
         except Exception as e:
-            raise Exception(f"Failed to set cache key '{key}': {str(e)}")
-            
+            msg = f"Failed to set cache key '{key}': {e}"
+            raise RedisCacheException(msg) from e
+
     async def get(self, key: str, default: Any = None) -> Any:
+        """Fetch a value. JSON encoded values are decoded, everything else is returned raw."""
         try:
-            value = await self.client.get(key)
-            
-            if value is None:
-                return default
-                
-            try:
-                return json.loads(value)
-            except json.JSONDecodeError:
-                return value
-                
+            value = await self._require_client().get(key)
+        except RedisCacheException:
+            raise
         except Exception as e:
-            raise Exception(f"Failed to get cache key '{key}': {str(e)}")
-    
+            msg = f"Failed to get cache key '{key}': {e}"
+            raise RedisCacheException(msg) from e
+
+        if value is None:
+            return default
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return value
+
     async def has_key(self, key: str) -> bool:
         try:
-            return bool(await self.client.exists(key))
+            return bool(await self._require_client().exists(key))
+        except RedisCacheException:
+            raise
         except Exception as e:
-            raise Exception(f"Failed to check existence of cache key '{key}': {str(e)}")
-    
-    async def increment(self, key: str, amount: int = 1, ttl: Optional[Union[int, timedelta]] = None) -> int:
+            msg = f"Failed to check existence of cache key '{key}': {e}"
+            raise RedisCacheException(msg) from e
+
+    async def increment(self, key: str, amount: int = 1, ttl: int | timedelta | None = None) -> int:
         """
-        Increment a counter by the specified amount. Creates the key with value 0 if it doesn't exist.
-        
-        Args:
-            key: The cache key for the counter
-            amount: Amount to increment by (default: 1)
-            ttl: Optional time to live for the key
-            
-        Returns:
-            int: The new value after incrementing
-            
-        Raises:
-            RedisCacheException: If the operation fails
+        Atomically increment a counter. The key is created (starting at 0) if missing.
+
+        When `ttl` is given it is applied on the first increment, and also re-applied
+        if the key somehow exists without an expiry, so counters can never live forever.
         """
         try:
-            # Use INCRBY for atomic increment operation
-            new_value = await self.client.incrby(key, amount)
-            
-            # Set TTL if provided (only on first increment when key was created)
-            if ttl is not None and new_value == amount:
-                if isinstance(ttl, timedelta):
-                    ttl = int(ttl.total_seconds())
-                await self.client.expire(key, ttl)
-                
-            return new_value
+            client = self._require_client()
+            new_value = await client.incrby(key, amount)
+            seconds = _ttl_seconds(ttl)
+            if seconds is not None and (new_value == amount or await client.ttl(key) == -1):
+                await client.expire(key, seconds)
+            return int(new_value)
+        except RedisCacheException:
+            raise
         except Exception as e:
-            raise RedisCacheException(f"Failed to increment cache key '{key}': {str(e)}")
-    
+            msg = f"Failed to increment cache key '{key}': {e}"
+            raise RedisCacheException(msg) from e
+
     async def get_counter(self, key: str) -> int:
-        """
-        Get the current value of a counter.
-        
-        Args:
-            key: The cache key for the counter
-            
-        Returns:
-            int: The current counter value (0 if key doesn't exist)
-            
-        Raises:
-            RedisCacheException: If the operation fails
-        """
+        """Current value of a counter (0 if the key doesn't exist)."""
         try:
-            value = await self.client.get(key)
+            value = await self._require_client().get(key)
             return int(value) if value is not None else 0
+        except RedisCacheException:
+            raise
         except Exception as e:
-            raise RedisCacheException(f"Failed to get counter value for key '{key}': {str(e)}")
-    
+            msg = f"Failed to get counter value for key '{key}': {e}"
+            raise RedisCacheException(msg) from e
+
     async def delete(self, key: str) -> bool:
         try:
-            return bool(await self.client.delete(key))
+            return bool(await self._require_client().delete(key))
+        except RedisCacheException:
+            raise
         except Exception as e:
-            raise RedisCacheException(f"Failed to delete cache key '{key}': {str(e)}")
-    
-    async def expire(self, key: str, ttl: Union[int, timedelta]) -> bool:
-        """
-        Set an expiration time for a key.
-        
-        Args:
-            key: The cache key
-            ttl: Time to live in seconds or as a timedelta object
-            
-        Returns:
-            bool: True if the timeout was set
-            
-        Raises:
-            RedisCacheException: If the operation fails
-        """
+            msg = f"Failed to delete cache key '{key}': {e}"
+            raise RedisCacheException(msg) from e
+
+    async def expire(self, key: str, ttl: int | timedelta) -> bool:
+        """Set an expiration time for a key. Returns True if the timeout was set."""
         try:
-            if isinstance(ttl, timedelta):
-                ttl = int(ttl.total_seconds())
-                
-            return await self.client.expire(key, ttl)
+            seconds = _ttl_seconds(ttl)
+            assert seconds is not None
+            return bool(await self._require_client().expire(key, seconds))
+        except RedisCacheException:
+            raise
         except Exception as e:
-            raise RedisCacheException(f"Failed to set expiry for cache key '{key}': {str(e)}")
-    
+            msg = f"Failed to set expiry for cache key '{key}': {e}"
+            raise RedisCacheException(msg) from e
+
     async def clear(self) -> bool:
-        """
-        Clear all keys in the current database.
-        
-        Returns:
-            bool: True if successful
-            
-        Raises:
-            RedisCacheException: If the operation fails
-        """
+        """Clear all keys in the current database."""
         try:
-            return await self.client.flushdb()
+            return bool(await self._require_client().flushdb())
+        except RedisCacheException:
+            raise
         except Exception as e:
-            raise RedisCacheException(f"Failed to clear cache: {str(e)}")
-    
+            msg = f"Failed to clear cache: {e}"
+            raise RedisCacheException(msg) from e
+
     async def close(self) -> None:
         """Close the Redis connection"""
-        if self.client:
-            await self.client.close()
-            print("Redis cache connection closed.")
+        if self.client is not None:
+            await self.client.aclose()
+            self.client = None
+            logger.info("Redis cache connection closed")

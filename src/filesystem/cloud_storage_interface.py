@@ -1,23 +1,26 @@
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Union, BinaryIO, Any
-from datetime import datetime
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, BinaryIO
+
 
 @dataclass
 class FileInfo:
     """Represents file information across all providers."""
+
     name: str
     path: str
     size: int
     last_modified: datetime
     content_type: str
-    etag: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
+    etag: str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass
 class FolderInfo:
     """Represents folder information."""
+
     name: str
     path: str
     file_count: int
@@ -26,60 +29,54 @@ class FolderInfo:
 
 
 class CloudStorageInterface(ABC):
-    """Abstract base class for cloud storage providers."""
-    
+    """Abstract base class for storage providers (local disk, S3, Spaces, MinIO...)."""
+
     @abstractmethod
-    async def upload(self, file_path: str, content: Union[bytes, BinaryIO], 
-               content_type: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> bool:
+    async def upload(
+        self,
+        file_path: str,
+        content: bytes | BinaryIO,
+        content_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> bool:
         """Upload a file to the storage."""
-        pass
-    
+
     @abstractmethod
     async def download_to_file(self, file_path: str, local_file_path: str) -> bool:
         """Download a file directly to a local file path."""
-        pass
-    
+
     @abstractmethod
     async def download(self, file_path: str) -> bytes:
-        """Download a file from the storage."""
-        pass
-    
+        """Download a file from the storage. Raises FileNotFoundError if missing."""
+
     @abstractmethod
     async def delete(self, file_path: str) -> bool:
         """Delete a file from the storage."""
-        pass
-    
+
     @abstractmethod
     async def exists(self, file_path: str) -> bool:
         """Check if a file exists."""
-        pass
-    
+
     @abstractmethod
     async def size(self, file_path: str) -> int:
-        """Get file size in bytes."""
-        pass
-    
+        """Get file size in bytes. Raises FileNotFoundError if missing."""
+
     @abstractmethod
-    async def list_files(self, path: str = "", recursive: bool = False) -> List[FileInfo]:
+    async def list_files(self, path: str = "", recursive: bool = False) -> list[FileInfo]:
         """List files in a directory."""
-        pass
-    
+
     @abstractmethod
-    async def list_folders(self, path: str = "") -> List[FolderInfo]:
+    async def list_folders(self, path: str = "") -> list[FolderInfo]:
         """List folders in a directory."""
-        pass
-    
+
     @abstractmethod
-    async def get_file_info(self, file_path: str) -> Optional[FileInfo]:
+    async def get_file_info(self, file_path: str) -> FileInfo | None:
         """Get detailed file information."""
-        pass
-    
+
     @abstractmethod
     async def create_folder(self, folder_path: str) -> bool:
         """Create a folder/directory."""
-        pass
-    
+
     @abstractmethod
     async def delete_folder(self, folder_path: str, recursive: bool = False) -> bool:
         """Delete a folder/directory."""
-        pass
