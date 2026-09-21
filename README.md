@@ -2,29 +2,27 @@
 
 🚀 Production-ready FastAPI template with daily log rotation, type safety, MongoDB/Mysql/Redis support, task scheduling, and comprehensive error handling.
 
-**Features:** Auto API docs • Daily logs • Type validation • API auth • Background jobs • Health checks • Cloud and local File System
+**Features:** Auto API docs • Daily logs • Type validation • API auth • Rate limiting • Background jobs • Health checks • Cloud and local File System • Test suite
 
 Perfect for microservices and data processing APIs. Skip the boilerplate, start building features.
 
 ## Setup
 
-> Using `uv` for faster dependency management:
+> Using `uv` for faster dependency management. Python 3.11+ is required, `.python-version` pins 3.12 so `uv` picks a version that has prebuilt wheels for everything.
 
 ```shell
 # Install uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Create virtual environment and install dependencies
-uv venv
-
-# Install all dependencies from pyproject.toml
+# Install all dependencies from pyproject.toml (creates .venv for you)
+# dev tools (ruff, mypy, pytest, fakeredis) are included by default
 uv sync
 
-# Or install with all optional dependency groups
-uv sync --all-extras
+# Production box, skip the dev tools
+uv sync --no-dev
 
-# Or install specific optional groups
-uv sync --extra dev --extra types
+# With the boto type stubs as well
+uv sync --all-extras
 
 # Configure environment
 cp .env.example .env
@@ -44,11 +42,23 @@ uv run ruff format .
 uv run ruff check . --fix
 
 # Type checking
-uv run mypy .
+uv run mypy src/ app.py boot.py
 
-# All in one
-.scripts/mypy.sh
+# All in one (format check + lint + mypy)
+.scripts/check.sh
 ```
+
+### Testing
+
+```shell
+uv run pytest                     # everything, with coverage summary
+uv run pytest --no-cov            # faster, no coverage table
+uv run pytest tests/test_app.py   # one file
+uv run pytest -k "redis or mongo" # by keyword
+uv run pytest -x                  # stop at first failure
+```
+
+Tests don't need Mongo, MySQL, Redis or any cloud account. Drivers are faked, Redis is `fakeredis`, and files go to a temp dir. `tests/conftest.py` pins the env vars before anything from `src` is imported, so your local `.env` never leaks into a test run.
 
 ### Managing Dependencies
 
@@ -67,31 +77,24 @@ uv lock --upgrade-package <package_name>
 uv sync
 ```
 
-## Testing
-
-```shell
-uv run pytest --no-cov            # faster, no coverage table
-uv run pytest tests/test_app.py   # one file
-uv run pytest -k "redis or mongo" # by keyword
-uv run pytest -x                  # stop at first failure
-```
-
 ## Start fastapi
 
 ```shell
 # Using uv (no venv activation needed!)
-uvicorn app:app --reload # for local development
-uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4 # in production to expose to the world
+uv run uvicorn app:app --reload # for local development
+uv run uvicorn app:app --host 0.0.0.0 --port 8000 --workers 4 # in production to expose to the world
 
 # Or if you prefer to activate the venv first:
 source .venv/bin/activate
 uvicorn app:app --reload
 ```
 
+If you sit behind nginx / a load balancer add `--proxy-headers --forwarded-allow-ips=<proxy ip>` so rate limiting sees the real client IP.
+
 **CORS Configuration**:
 
--   **Development**: All origins are allowed (`*`) for easier testing
--   **Production**: You must set `ALLOWED_ORIGINS` in your `.env` file (comma-separated list)
+-   **Development**: leave `ALLOWED_ORIGINS` empty to allow everything, or set a comma-separated list
+-   **Production**: `ALLOWED_ORIGINS` is required, the app refuses to boot without it
 
 ### Endpoints:
 
@@ -102,13 +105,36 @@ curl -X POST http://localhost:8000/test \
      -H "Content-Type: application/json" \
      -H "X-API-KEY: your-api-key" \
      -d '{
-            "org_id": "1"
+            "org_id": 1
         }'
 ```
 
+`/test` shows the pattern for a protected route: `Depends(verify_api_key)` checks `X-API-KEY` against `HTTP_SECRET`, `@limiter.limit()` rate limits it, and the pydantic model validates the body. Swagger UI is at `/docs`.
+
+## Configuration
+
+Everything is read from `.env` into `src/config.py` once at import. Empty values fall back to defaults, booleans are strict (`true/false/1/0/yes/no/on/off`), and a bad value fails fast with a clear message.
+
+| Variable                      | Default                     | Notes                                                                  |
+| ----------------------------- | --------------------------- | ---------------------------------------------------------------------- |
+| `APP_MODE`                    | `development`               | `development` or `production`                                          |
+| `APP_DEBUG`                   | `true`                      | Debug logging (ignored in production)                                  |
+| `TZ`                          | `America/New_York`          | App timezone, also used for log rollover and cron schedules            |
+| `STORAGE_DIR`                 | `<project>/storage`         | Where logs and local files are written                                 |
+| `ALLOWED_ORIGINS`             | empty                       | Comma separated. Required in production                                |
+| `HTTP_SECRET`                 | empty                       | Value for the `X-API-KEY` header. Required in production               |
+| `DEFAULT_FILESYSTEM`          | `local`                     | `local`, `s3`, `do_spaces`, `minio`                                    |
+| `LOCAL_STORAGE_PATH`          | `media`                     | Inside `storage/app/`                                                  |
+| `AWS_*`, `DO_SPACES_*`, `MINIO_*` | empty                   | A cloud provider is only registered when its keys are filled in        |
+| `MONGO_URI`, `MONGO_DB_NAME`  | `mongodb://localhost:27017`, `app` |                                                                |
+| `MONGO_TLS`                   | empty                       | Empty = let the URI decide (`mongodb+srv://` is TLS). `true`/`false` to force |
+| `MYSQL_*`                     | `localhost:3306`, `root`, `test` |                                                                   |
+| `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`, `REDIS_PASSWORD` | `localhost:6379`, `0`, none |                                                |
+| `GOOGLE_CHAT_DEV_TEAM_WEBHOOK` | empty                      | Used by `async_report()` in production                                 |
+
 ## Services required in server
 
--   Redis
+-   Redis (only if you use the cache or websocket rate limiter)
 
 ```bash
 sudo apt update
@@ -123,15 +149,17 @@ cat storage/logs/app-yyyy-mm-dd.log
 cat storage/logs/error-yyyy-mm-dd.log
 ```
 
+A new file is started every day at midnight in the app timezone. In debug mode the console shows line numbers too.
+
 ## Important
 
-make sure to call `await app_boot()` in your entry file (if not using `src.app.main.py` and `app.py` as it is already done there)
+make sure to call `await app_boot()` in your entry file (if not using `src.app.main.py` and `app.py` as it is already done there). It validates the config, sets up logging and registers the storage providers.
 
 ### DB Usage
 
 ```python
 from src.db.async_mongo import mongo_manager, get_collection
-from src.db.async_mysql import mysql_manager, fetch_one, execute_query, execute_transaction
+from src.db.async_mysql import mysql_manager, fetch_one, execute_query, insert_one, update_records, execute_transaction
 
 async def main():
     await app_boot()
@@ -146,7 +174,7 @@ async def main():
         ======================================================
         """
         users_collection = await get_collection("users") # using default database
-        user = users_collection.find_one({"_id": user_id})
+        user = await users_collection.find_one({"_id": user_id})
 
         analytics_db = mongo_manager.get_database("analytics") # use a different database
         user_stats = await analytics_db.user_stats.find_one({"user_id": user_id})
@@ -158,6 +186,9 @@ async def main():
         """
         user = await fetch_one("SELECT * FROM users WHERE id = %s", (user_id,))
         users = await execute_query("SELECT * FROM users WHERE active = %s", (True,))
+
+        new_id = await insert_one("users", {"name": "a", "org_id": 1})
+        await update_records("users", {"name": "b"}, "id = %s", (new_id,))
 
         queries = [
             ("UPDATE accounts SET balance = balance - %s WHERE id = %s", (amount, from_account)),
@@ -175,10 +206,24 @@ async def main():
         await mysql_manager.close()
 ```
 
+Always pass values through `params`. Table and column names given to `insert_one` / `update_records` / `delete_records` are validated and backtick quoted, so a bad key raises instead of ending up in the SQL.
+
+### Cache
+
+```python
+from src.cache.redis_service import redis_service
+
+cache = await redis_service.ensure_connected() # shared connection, connects on first use
+
+await cache.set("user:1", {"name": "a"}, ttl=300) # dicts/lists are json encoded
+user = await cache.get("user:1")
+count = await cache.increment("hits:today", ttl=86400)
+```
+
 ### Helper & Utilities
 
 ```python
-await async_report("Message ...", NotificationType.WARNING) # notify (google chat)
+await async_report("Message ...", NotificationType.WARNING) # notify (google chat), just logs outside production
 
 get_md5("value") # md5 hash
 
@@ -191,6 +236,8 @@ to_app_timezone(date) # convert date to app tz
 
 ### Websocket
 
+Needs Redis. If Redis is down the limiter lets the request through and logs an error, it won't take your sockets down with it. Full doc in `src/docs/websocket-rate-limiting.md`.
+
 #### Basic Usage (Connection Rate Limiting)
 
 ```python
@@ -198,7 +245,6 @@ from src.utils.ws_rate_limiter import ws_rate_limit
 
 @router.websocket("/endpoint")
 @ws_rate_limit(requests=10, window=60, scope="connection")
-@require_ws_auth
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     # Your WebSocket logic here
@@ -218,7 +264,6 @@ For rate limiting individual messages within an active WebSocket connection:
 from src.utils.ws_rate_limiter import check_message_rate_limit
 
 @router.websocket("/endpoint")
-@require_ws_auth
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
 
@@ -246,20 +291,23 @@ async def websocket_endpoint(websocket: WebSocket):
 
 ### REST API
 
-Follow app.py
+Follow app.py. The endpoint must take `request: Request`, that's how slowapi finds the client.
 
 ```python
+@app.get("/things")
 @limiter.limit("10/minute")
-async def test(request: Request, response: Response):
+async def things(request: Request, response: Response):
     #...
 ```
 
 ## Task Scheduling
 
+Cron expressions run in the app timezone (`TZ`).
+
 #### Using decorators (recommended)
 
 ```python
-from .async_scheduler import scheduler
+from src.schedule.async_scheduler import scheduler
 
 @scheduler.schedule("*/2 * * * *", name="data_sync")
 async def sync_data():
@@ -291,18 +339,19 @@ task = scheduler.add_task(
    send_notification,
    "0 10 * * *",  # Daily at 10 AM
    name="daily_reminder",
-   # Arguments for the function
-   123,  # user_id
-   message="Don't forget to check your tasks!"
+   args=(123,),  # user_id
+   kwargs={"message": "Don't forget to check your tasks!"},
+   max_retries=5,
+   retry_delay=120,  # 2 minutes
 )
-task.max_retries = 5
-task.retry_delay = 120  # 2 minutes
 ```
+
+Failed tasks retry `max_retries` times, `retry_delay` seconds apart, then go back to their normal schedule. A task that is still running when its next tick comes is skipped, not started twice.
 
 ### Run while local development
 
 ```bash
-python -m src.schedule.example_usage.py # create your own schedule task files
+python -m src.schedule.example_usage # create your own schedule task files, e.g. src/schedule/tasks.py
 ```
 
 ### Setup in Production
@@ -310,14 +359,16 @@ python -m src.schedule.example_usage.py # create your own schedule task files
 ```bash
 which python # inside code root while your venv is activated
 
-# should return something like: /home/sourav/apps/py-starter/venv/bin/python
+# should return something like: /home/sourav/apps/py-starter/.venv/bin/python
 ```
 
-Now refer to `src/schedule/stub/README.md` and replace `/home/ubuntu/apps/aw-ai-resume-parser/venv/bin/python` with your `<which python>` path
+Now refer to `src/schedule/stub/README.md` and replace `/home/ubuntu/apps/py-starter` with your project path and `<which python>`
 
 ## Filesystem
 
 Refer `src.filesystem.file_manager.py` to check all supported methods
+
+Local storage is always registered. S3 / Spaces / MinIO are registered by `boot.py` only when their keys are in `.env`, so a fresh checkout boots with just `local`. Paths that try to leave the storage root (`../../etc/passwd`) are rejected.
 
 ```python
 """Quick Guide of how to use the cloud file manager."""
@@ -335,7 +386,7 @@ await file_manager.add_provider(StorageProvider.MINIO, minio_storage, set_as_def
 
 # use multiple adaptars on the fly
 filesystem = FileManager()
-resume_filesys = self.filesystem.get_provider(StorageProvider.DO_SPACES.value)
+resume_filesys = filesystem.get_provider(StorageProvider.DO_SPACES)
 
 # download remote file to tmp
 file_path = "media/abc.txt"
@@ -398,6 +449,25 @@ async def example_performance_improvements():
     backup_results = await asyncio.gather(*[
         backup_to_local(file.path) for file in s3_files[:10]  # Backup first 10 files
     ])
+```
+
+## Project layout
+
+```
+app.py                      FastAPI app, routes, auth dependency
+boot.py                     app_boot(): config validation, logging, storage providers
+src/config.py               all env vars in one place
+src/app/main.py             entry for standalone scripts
+src/cache/                  RedisCache + shared redis_service
+src/db/                     mongo (sync), async_mongo (motor), async_mysql (aiomysql)
+src/filesystem/             FileManager, LocalStorage, S3CompatibleStorage
+src/logging/                DailyFileHandler
+src/models/                 pydantic request models
+src/report/notify.py        Google Chat notifications
+src/schedule/               cron scheduler + deployment stubs
+src/utils/                  helpers, perf tracker, http + ws rate limiters
+tests/                      pytest suite (no external services needed)
+storage/                    logs and local files (gitignored)
 ```
 
 ## TODO
