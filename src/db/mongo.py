@@ -16,7 +16,7 @@ class Mongo:
     def connect(self):
         """Connect to MongoDB if not already connected"""
         try:
-            self.client: MongoClient[Any] = MongoClient(self.mongo_uri)
+            self.client: MongoClient[Any] = MongoClient(self.mongo_uri, tls = Config.MONGO_TLS)
             self.db = self.client[self.database_name]
             
             # Test connection

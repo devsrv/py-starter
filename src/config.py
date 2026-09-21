@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 from zoneinfo import ZoneInfo
 from pathlib import Path
+from src.utils.helper import _optional_bool
 
 load_dotenv()
 
@@ -107,6 +108,7 @@ class Config:
     MYSQL_USER = os.getenv('MYSQL_USER', 'root')
     MYSQL_DB = os.getenv('MYSQL_DB', 'test')
     MYSQL_PASSWORD = os.getenv('MYSQL_PASSWORD', '')
+    MONGO_TLS: bool = _optional_bool(os.environ.get("MONGO_TLS"), default=True)
     
     REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
     REDIS_PORT = int(os.getenv('REDIS_PORT', 6379))
