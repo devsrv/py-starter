@@ -1,80 +1,92 @@
 """Performance tracking utilities"""
 
+import asyncio
+import functools
+import logging
 import time
-from typing import Optional
+from collections.abc import Callable
+from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class PerformanceTracker:
     """Track application performance metrics"""
 
-    def __init__(self):
-        self.boot_start_time: Optional[float] = None
-        self.boot_end_time: Optional[float] = None
-        self.boot_duration: Optional[float] = None
+    def __init__(self) -> None:
+        self.boot_start_time: float | None = None
+        self.boot_end_time: float | None = None
+        self.boot_duration: float | None = None
 
-    def start_boot(self):
+    def start_boot(self) -> None:
         """Mark the start of boot process"""
-        self.boot_start_time = time.time()
+        self.boot_start_time = time.perf_counter()
+        self.boot_end_time = None
+        self.boot_duration = None
 
-    def end_boot(self):
+    def end_boot(self) -> None:
         """Mark the end of boot process"""
-        self.boot_end_time = time.time()
-        if self.boot_start_time:
+        self.boot_end_time = time.perf_counter()
+        if self.boot_start_time is not None:
             self.boot_duration = self.boot_end_time - self.boot_start_time
 
-    def get_boot_time(self) -> Optional[float]:
-        """Get boot duration in seconds"""
+    def get_boot_time(self) -> float | None:
+        """Get boot duration in seconds (None until boot has completed)"""
         return self.boot_duration
 
     @staticmethod
-    def time_operation(operation_name: str = "operation"):
-        """Decorator to time function execution"""
+    def time_operation(operation_name: str = "operation") -> Callable[..., Any]:
+        """Decorator to time function execution (sync or async).
 
-        def decorator(func):
-            async def async_wrapper(*args, **kwargs):
-                start_time = time.time()
-                try:
-                    result = await func(*args, **kwargs)
-                    duration = time.time() - start_time
+        If the return value has a `performance_metrics` dict attribute, the duration is
+        stored there under `<operation_name>_duration_seconds`. Durations are always
+        logged at DEBUG level, including when the function raises.
+        """
 
-                    # Add timing to result if it has performance_metrics
-                    if hasattr(result, "performance_metrics"):
-                        if result.performance_metrics is None:
-                            result.performance_metrics = {}
-                        result.performance_metrics[
-                            f"{operation_name}_duration_seconds"
-                        ] = round(duration, 3)
+        def _record(result: Any, duration: float) -> None:
+            logger.debug("%s took %.3fs", operation_name, duration)
+            if hasattr(result, "performance_metrics"):
+                if result.performance_metrics is None:
+                    result.performance_metrics = {}
+                result.performance_metrics[f"{operation_name}_duration_seconds"] = round(
+                    duration, 3
+                )
 
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+            if asyncio.iscoroutinefunction(func):
+
+                @functools.wraps(func)
+                async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                    start_time = time.perf_counter()
+                    try:
+                        result = await func(*args, **kwargs)
+                    except Exception:
+                        logger.debug(
+                            "%s failed after %.3fs",
+                            operation_name,
+                            time.perf_counter() - start_time,
+                        )
+                        raise
+                    _record(result, time.perf_counter() - start_time)
                     return result
-                except Exception:
-                    duration = time.time() - start_time
-                    # Log the duration even on error
-                    raise
 
-            def sync_wrapper(*args, **kwargs):
-                start_time = time.time()
+                return async_wrapper
+
+            @functools.wraps(func)
+            def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+                start_time = time.perf_counter()
                 try:
                     result = func(*args, **kwargs)
-                    duration = time.time() - start_time
-
-                    # Add timing to result if it has performance_metrics
-                    if hasattr(result, "performance_metrics"):
-                        if result.performance_metrics is None:
-                            result.performance_metrics = {}
-                        result.performance_metrics[
-                            f"{operation_name}_duration_seconds"
-                        ] = round(duration, 3)
-
-                    return result
                 except Exception:
-                    duration = time.time() - start_time
+                    logger.debug(
+                        "%s failed after %.3fs",
+                        operation_name,
+                        time.perf_counter() - start_time,
+                    )
                     raise
+                _record(result, time.perf_counter() - start_time)
+                return result
 
-            # Return appropriate wrapper based on function type
-            import asyncio
-
-            if asyncio.iscoroutinefunction(func):
-                return async_wrapper
             return sync_wrapper
 
         return decorator

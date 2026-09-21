@@ -1,19 +1,22 @@
+# Copy to /etc/systemd/system/scheduler.service and replace the paths below with
+# your project root and the output of `which python` inside your venv.
 [Unit]
-Description=AI Resume Parser Task Scheduler
+Description=Task Scheduler
 After=network.target mongodb.service mysql.service
 
 [Service]
 Type=simple
 User=ubuntu
 Group=ubuntu
-WorkingDirectory=/home/ubuntu/apps/aw-ai-resume-parser
-Environment="PYTHONPATH=/home/ubuntu/apps/aw-ai-resume-parser"
-ExecStart=/home/ubuntu/apps/aw-ai-resume-parser/venv/bin/python -m src.schedule.tasks
+WorkingDirectory=/home/ubuntu/apps/py-starter
+Environment="PYTHONPATH=/home/ubuntu/apps/py-starter"
+# src.schedule.tasks = your module that registers tasks and calls `await scheduler.start()`
+ExecStart=/home/ubuntu/apps/py-starter/.venv/bin/python -m src.schedule.tasks
 Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=resume-parser-scheduler
+SyslogIdentifier=scheduler
 
 # Security settings
 NoNewPrivileges=true

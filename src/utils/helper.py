@@ -1,34 +1,27 @@
 import hashlib
+from datetime import UTC, datetime
+
 from src.config import Config
-from datetime import datetime, timezone
 
 
 def get_md5(input_string: str | bytes) -> str:
-    # Convert string to bytes if it isn't already
-    if isinstance(input_string, str):
-        input_bytes = input_string.encode('utf-8')
-    else:
-        input_bytes = input_string
-    
-    # Create MD5 hash
-    md5_hash = hashlib.md5(input_bytes)
-    
-    # Return hexadecimal representation
-    return md5_hash.hexdigest()
+    """Return the hex MD5 digest of a string or bytes."""
+    input_bytes = input_string.encode("utf-8") if isinstance(input_string, str) else input_string
+    return hashlib.md5(input_bytes, usedforsecurity=False).hexdigest()
 
 
-def now():
+def now() -> datetime:
     """Get current datetime in application timezone"""
     return datetime.now(Config.TZ)
 
 
-def utcnow():
+def utcnow() -> datetime:
     """Get current UTC datetime"""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def to_app_timezone(dt: datetime) -> datetime:
-    """Convert datetime to application timezone"""
+    """Convert datetime to application timezone. Naive datetimes are treated as UTC."""
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt.astimezone(Config.TZ)

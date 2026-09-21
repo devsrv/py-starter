@@ -4,46 +4,34 @@
 		{
 			"label": "FastAPI",
 			"type": "shell",
-			"command": "uvicorn app:app --reload",
+			"command": "uv run uvicorn app:app --reload",
 			"group": "test",
 			"problemMatcher": [],
-			"presentation": {
-				"reveal": "always",
-				"panel": "new"
-			}
-		},
-		{
-			"label": "Save to requirements.txt",
-			"type": "shell",
-			"command": "pip freeze > requirements.txt",
-			"group": "test",
-			"problemMatcher": [],
-			"presentation": {
-				"reveal": "always",
-				"panel": "new"
-			}
+			"presentation": { "reveal": "always", "panel": "new" }
 		},
 		{
 			"label": "Install Packages",
 			"type": "shell",
-			"command": "pip install -r requirements.txt",
+			"command": "uv sync",
 			"group": "test",
 			"problemMatcher": [],
-			"presentation": {
-				"reveal": "always",
-				"panel": "new"
-			}
+			"presentation": { "reveal": "always", "panel": "new" }
+		},
+		{
+			"label": "Test",
+			"type": "shell",
+			"command": "uv run pytest",
+			"group": "test",
+			"problemMatcher": [],
+			"presentation": { "reveal": "always", "panel": "new" }
 		},
 		{
 			"label": "Lint",
 			"type": "shell",
-			"command": "./.scripts/mypy.sh",
+			"command": "./.scripts/check.sh",
 			"group": "test",
 			"problemMatcher": [],
-			"presentation": {
-				"reveal": "always",
-				"panel": "new"
-			}
+			"presentation": { "reveal": "always", "panel": "new" }
 		}
 	]
 }

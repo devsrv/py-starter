@@ -9,9 +9,10 @@ This module provides:
 ### How It Works
 
 1. **Client Identification**: Uses client IP address (supports X-Forwarded-For header for proxies)
-2. **Redis Tracking**: Uses Redis INCR with TTL to track connection attempts
+2. **Redis Tracking**: Uses Redis INCR with TTL to track connection attempts (via `src/cache/redis_service.py`)
 3. **Rate Limit Check**: Checks before accepting WebSocket connection
 4. **Automatic Rejection**: Closes connection with error code 1008 if rate limit exceeded
+5. **Fail open**: If Redis is unreachable the request is allowed and an error is logged
 
 ### Usage
 
@@ -22,7 +23,6 @@ from src.utils.ws_rate_limiter import ws_rate_limit
 
 @router.websocket("/endpoint")
 @ws_rate_limit(requests=10, window=60, scope="connection")
-@require_ws_auth
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     # Your WebSocket logic here
@@ -42,7 +42,6 @@ For rate limiting individual messages within an active WebSocket connection:
 from src.utils.ws_rate_limiter import check_message_rate_limit
 
 @router.websocket("/endpoint")
-@require_ws_auth
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
 
@@ -70,8 +69,6 @@ async def websocket_endpoint(websocket: WebSocket):
 
 ### Adjusting Rate Limits
 
-To change rate limits, modify the decorator parameters:
-
 ```python
 # Allow 20 connections per minute
 @ws_rate_limit(requests=20, window=60, scope="connection")
@@ -94,16 +91,11 @@ When a client exceeds the rate limit:
 ### Example Client Handling
 
 ```javascript
-const ws = new WebSocket('ws://localhost:8000/api/v1/assessment-agent/generate-assessment')
-
-ws.onerror = (error) => {
-	console.error('WebSocket error:', error)
-}
+const ws = new WebSocket('ws://localhost:8000/ws/endpoint')
 
 ws.onclose = (event) => {
 	if (event.code === 1008) {
 		console.error('Rate limit exceeded:', event.reason)
-		// Wait before retrying
 		setTimeout(() => {
 			// Retry connection
 		}, 60000) // Wait 1 minute
@@ -119,22 +111,14 @@ The rate limiter uses Redis keys in the format:
 ws_ratelimit:{scope}:{endpoint}:{client_ip}
 ```
 
-### Check Rate Limit Status
-
-You can manually check rate limit status in Redis:
+`{endpoint}` is the name of the decorated function (or the string you pass to
+`check_message_rate_limit`).
 
 ```bash
-# Connect to Redis
 redis-cli
-
-# List all WebSocket rate limit keys
 KEYS ws_ratelimit:*
-
-# Check specific client's connection count
-GET ws_ratelimit:connection:websocket_generate_single_assessment:192.168.1.100
-
-# Check TTL (time remaining)
-TTL ws_ratelimit:connection:websocket_generate_single_assessment:192.168.1.100
+GET ws_ratelimit:connection:websocket_endpoint:192.168.1.100
+TTL ws_ratelimit:connection:websocket_endpoint:192.168.1.100
 ```
 
 ## Benefits Over slowapi
@@ -146,72 +130,27 @@ TTL ws_ratelimit:connection:websocket_generate_single_assessment:192.168.1.100
 5. **Graceful Rejection**: Closes connection with meaningful error message
 6. **TTL Support**: Automatic cleanup of rate limit data
 
-## Testing
-
-To test the rate limiter:
-
-```python
-import asyncio
-from fastapi.testclient import TestClient
-
-def test_websocket_rate_limit():
-    with TestClient(app) as client:
-        # First 10 connections should succeed
-        for i in range(10):
-            with client.websocket_connect("/api/v1/assessment-agent/generate-assessment") as ws:
-                ws.send_json({"type": "generate", "prompt": "test"})
-
-        # 11th connection should be rejected
-        with pytest.raises(Exception):
-            with client.websocket_connect("/api/v1/assessment-agent/generate-assessment") as ws:
-                pass
-```
-
 ## Troubleshooting
 
 ### Issue: Rate limit triggered too frequently
 
-**Solution**: Increase the `requests` parameter or `window` duration:
-
-```python
-@ws_rate_limit(requests=20, window=60)  # More lenient
-```
+Increase the `requests` parameter or `window` duration.
 
 ### Issue: Legitimate clients being blocked
 
-**Solution**:
-
 1. Check if behind a load balancer/proxy - ensure X-Forwarded-For header is set
-2. Consider using authentication tokens for rate limiting instead of IP
-3. Implement user-based rate limiting
+2. Consider using authentication tokens for rate limiting instead of IP (subclass
+   `WebSocketRateLimiter` and override `_get_client_identifier`)
 
 ### Issue: Rate limiter not working
 
-**Solution**:
-
 1. Verify Redis is running: `redis-cli ping`
-2. Check Redis connection in logs
-3. Ensure `ws_rate_limit` decorator is placed BEFORE `@require_ws_auth`
-
-## Future Enhancements
-
-Potential improvements:
-
-1. **Token-based limiting**: Rate limit per authentication token instead of IP
-2. **Tiered limits**: Different limits for different user tiers (free/premium)
-3. **Dynamic limits**: Adjust limits based on server load
-4. **Burst handling**: Allow short bursts above limit
-5. **Metrics**: Track rate limit hits for monitoring
+2. Check `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` in `.env`
+3. Ensure `@ws_rate_limit` is placed directly under `@router.websocket(...)`
 
 ## Related Files
 
 -   Implementation: `src/utils/ws_rate_limiter.py`
--   Assessment routes: `src/app/assessment/routes.py`
--   JD routes: `src/app/jd/routes.py`
--   Email routes: `src/app/email/routes.py`
--   Redis service: `src/app/cache/redis_service.py`
+-   Shared Redis connection: `src/cache/redis_service.py`
 -   Redis cache: `src/cache/redis.py`
-
----
-
-Last Updated: 2025-11-03
+-   Tests: `tests/test_ws_rate_limiter.py`

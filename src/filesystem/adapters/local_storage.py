@@ -1,240 +1,284 @@
-from typing import Dict, List, Optional, Union, BinaryIO, Any
-from datetime import datetime
-from pathlib import Path
+import asyncio
 import json
+import logging
 import mimetypes
 import shutil
-from src.filesystem.cloud_storage_interface import CloudStorageInterface, FileInfo, FolderInfo
 from concurrent.futures import ThreadPoolExecutor
-import asyncio
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, BinaryIO
+
 import aiofiles
 import aiofiles.os
 
+from src.filesystem.cloud_storage_interface import (
+    CloudStorageInterface,
+    FileInfo,
+    FolderInfo,
+)
+
+logger = logging.getLogger(__name__)
+
+META_SUFFIX = ".meta"
+
+
 class LocalStorage(CloudStorageInterface):
-    """Local filesystem storage implementation."""
-    
+    """Local filesystem storage implementation.
+
+    Files live under `base_path`. Metadata passed to `upload()` is kept in a
+    sidecar `<file>.meta` JSON file next to the file. Paths that try to escape
+    `base_path` (e.g. `../../etc/passwd`) are rejected with ValueError.
+    """
+
     def __init__(self, base_path: str, max_workers: int = 10):
-        self.base_path = Path(base_path)
+        self.base_path = Path(base_path).resolve()
         self.base_path.mkdir(parents=True, exist_ok=True)
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
-    
+
     def _get_full_path(self, file_path: str) -> Path:
-        return self.base_path / file_path
-    
-    async def upload(self, file_path: str, content: Union[bytes, BinaryIO], 
-                    content_type: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> bool:
+        candidate = (self.base_path / file_path.lstrip("/")).resolve()
+        if candidate != self.base_path and self.base_path not in candidate.parents:
+            msg = f"Path escapes storage root: {file_path!r}"
+            raise ValueError(msg)
+        return candidate
+
+    @staticmethod
+    def _meta_path(full_path: Path) -> Path:
+        return full_path.with_name(full_path.name + META_SUFFIX)
+
+    @staticmethod
+    def _mtime(stat: Any) -> datetime:
+        return datetime.fromtimestamp(stat.st_mtime, tz=UTC)
+
+    @staticmethod
+    def _content_type(path: Path) -> str:
+        return mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+
+    def _read_meta_sync(self, full_path: Path) -> dict[str, Any]:
+        meta_path = self._meta_path(full_path)
+        if not meta_path.exists():
+            return {}
+        try:
+            loaded = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+        return dict(loaded) if isinstance(loaded, dict) else {}
+
+    async def upload(
+        self,
+        file_path: str,
+        content: bytes | BinaryIO,
+        content_type: str | None = None,  # noqa: ARG002 - not stored on local disk
+        metadata: dict[str, Any] | None = None,
+    ) -> bool:
         try:
             full_path = self._get_full_path(file_path)
             full_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             if isinstance(content, (bytes, bytearray, memoryview)):
-                async with aiofiles.open(full_path, 'wb') as f:
-                    await f.write(content)
+                data: bytes = bytes(content)
+            elif hasattr(content, "read"):
+                raw = content.read()
+                if isinstance(raw, str):
+                    raw = raw.encode("utf-8")
+                if not isinstance(raw, (bytes, bytearray, memoryview)):
+                    msg = f"Cannot write data of type {type(raw)} to binary file"
+                    raise TypeError(msg)
+                data = bytes(raw)
             else:
-                # Handle BinaryIO
-                data = content.read()
-                if isinstance(data, bytes):
-                    async with aiofiles.open(full_path, 'wb') as f:
-                        await f.write(data)
-                else:
-                    if isinstance(data, str):
-                        async with aiofiles.open(full_path, 'wb') as f:
-                            await f.write(data.encode('utf-8'))
-                    else:
-                        raise TypeError(f"Cannot write data of type {type(data)} to binary file")
-            
-            # Store metadata if provided
+                msg = "content must be bytes or a file-like object"
+                raise TypeError(msg)
+
+            async with aiofiles.open(full_path, "wb") as f:
+                await f.write(data)
+
+            meta_path = self._meta_path(full_path)
             if metadata:
-                metadata_path = full_path.with_suffix(full_path.suffix + '.meta')
-                async with aiofiles.open(metadata_path, 'w', encoding='utf-8') as f:
+                async with aiofiles.open(meta_path, "w", encoding="utf-8") as f:
                     await f.write(json.dumps(metadata))
-            
+            elif await aiofiles.os.path.exists(meta_path):
+                # Overwriting a file without metadata should not keep stale metadata
+                await aiofiles.os.remove(meta_path)
+
             return True
-        except Exception:
+        except Exception as e:
+            logger.error("Local upload failed for %s: %s", file_path, e)
             return False
-    
+
     async def download(self, file_path: str) -> bytes:
         full_path = self._get_full_path(file_path)
-        if not await aiofiles.os.path.exists(full_path):
-            raise FileNotFoundError(f"File not found: {file_path}")
-        
-        async with aiofiles.open(full_path, 'rb') as f:
+        if not await aiofiles.os.path.isfile(full_path):
+            msg = f"File not found: {file_path}"
+            raise FileNotFoundError(msg)
+
+        async with aiofiles.open(full_path, "rb") as f:
             return await f.read()
-        
+
     async def download_to_file(self, file_path: str, local_file_path: str) -> bool:
         full_path = self._get_full_path(file_path)
-        if not await aiofiles.os.path.exists(full_path):
-            raise FileNotFoundError(f"File not found: {file_path}")
-        
-        try:
-            async with aiofiles.open(full_path, 'rb') as src_file:
-                async with aiofiles.open(local_file_path, 'wb') as dest_file:
-                    while True:
-                        chunk = await src_file.read(1024 * 1024)  # Read in 1MB chunks
-                        if not chunk:
-                            break
-                        await dest_file.write(chunk)
-            return True
-        except Exception:
+        if not await aiofiles.os.path.isfile(full_path):
             return False
-    
+
+        try:
+            Path(local_file_path).parent.mkdir(parents=True, exist_ok=True)
+            async with (
+                aiofiles.open(full_path, "rb") as src_file,
+                aiofiles.open(local_file_path, "wb") as dest_file,
+            ):
+                while chunk := await src_file.read(1024 * 1024):  # 1MB chunks
+                    await dest_file.write(chunk)
+            return True
+        except Exception as e:
+            logger.error("Local download_to_file failed for %s: %s", file_path, e)
+            return False
+
     async def delete(self, file_path: str) -> bool:
         try:
             full_path = self._get_full_path(file_path)
-            if await aiofiles.os.path.exists(full_path):
-                await aiofiles.os.remove(full_path)
-                # Also delete metadata file if exists
-                metadata_path = full_path.with_suffix(full_path.suffix + '.meta')
-                if await aiofiles.os.path.exists(metadata_path):
-                    await aiofiles.os.remove(metadata_path)
-                return True
+            if not await aiofiles.os.path.isfile(full_path):
+                return False
+            await aiofiles.os.remove(full_path)
+            meta_path = self._meta_path(full_path)
+            if await aiofiles.os.path.exists(meta_path):
+                await aiofiles.os.remove(meta_path)
+            return True
+        except Exception as e:
+            logger.error("Local delete failed for %s: %s", file_path, e)
             return False
-        except Exception:
-            return False
-    
+
     async def exists(self, file_path: str) -> bool:
-        return await aiofiles.os.path.exists(self._get_full_path(file_path))
-    
+        try:
+            return await aiofiles.os.path.isfile(self._get_full_path(file_path))
+        except ValueError:
+            return False
+
     async def size(self, file_path: str) -> int:
         full_path = self._get_full_path(file_path)
-        if not await aiofiles.os.path.exists(full_path):
-            raise FileNotFoundError(f"File not found: {file_path}")
-        
+        if not await aiofiles.os.path.isfile(full_path):
+            msg = f"File not found: {file_path}"
+            raise FileNotFoundError(msg)
         stat = await aiofiles.os.stat(full_path)
         return stat.st_size
-    
-    async def list_files(self, path: str = "", recursive: bool = False) -> List[FileInfo]:
+
+    async def list_files(self, path: str = "", recursive: bool = False) -> list[FileInfo]:
         full_path = self._get_full_path(path)
-        if not await aiofiles.os.path.exists(full_path):
+        if not await aiofiles.os.path.isdir(full_path):
             return []
-        
-        # Use thread pool for CPU-intensive file system operations
-        def _list_files_sync():
-            files: List[FileInfo] = []
+
+        def _list_files_sync() -> list[FileInfo]:
+            files: list[FileInfo] = []
             pattern = "**/*" if recursive else "*"
-            
-            for file_path_obj in full_path.glob(pattern):
-                if file_path_obj.is_file() and not file_path_obj.name.endswith('.meta'):
-                    relative_path = file_path_obj.relative_to(self.base_path)
-                    stat = file_path_obj.stat()
-                    
-                    # Load metadata if exists
-                    metadata_path = file_path_obj.with_suffix(file_path_obj.suffix + '.meta')
-                    metadata: Dict[str, Any] = {}
-                    if metadata_path.exists():
-                        try:
-                            with open(metadata_path, 'r', encoding='utf-8') as f:
-                                metadata = json.load(f)
-                        except (json.JSONDecodeError, IOError):
-                            pass
-                    
-                    files.append(FileInfo(
-                        name=file_path_obj.name,
-                        path=str(relative_path),
+
+            for p in full_path.glob(pattern):
+                if not p.is_file() or p.name.endswith(META_SUFFIX):
+                    continue
+                stat = p.stat()
+                files.append(
+                    FileInfo(
+                        name=p.name,
+                        path=p.relative_to(self.base_path).as_posix(),
                         size=stat.st_size,
-                        last_modified=datetime.fromtimestamp(stat.st_mtime),
-                        content_type=mimetypes.guess_type(str(file_path_obj))[0] or 'application/octet-stream',
-                        metadata=metadata
-                    ))
-            
+                        last_modified=self._mtime(stat),
+                        content_type=self._content_type(p),
+                        metadata=self._read_meta_sync(p),
+                    )
+                )
+
             return sorted(files, key=lambda x: x.last_modified, reverse=True)
-        
-        loop = asyncio.get_event_loop()
+
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self.executor, _list_files_sync)
-    
-    async def list_folders(self, path: str = "") -> List[FolderInfo]:
+
+    async def list_folders(self, path: str = "") -> list[FolderInfo]:
         full_path = self._get_full_path(path)
-        if not await aiofiles.os.path.exists(full_path):
+        if not await aiofiles.os.path.isdir(full_path):
             return []
-        
-        def _list_folders_sync():
-            folders: List[FolderInfo] = []
-            for folder_path_obj in full_path.iterdir():
-                if folder_path_obj.is_dir():
-                    relative_path = folder_path_obj.relative_to(self.base_path)
-                    stat = folder_path_obj.stat()
-                    
-                    folders.append(FolderInfo(
-                        name=folder_path_obj.name,
-                        path=str(relative_path),
-                        file_count=0,  # Will be computed separately for performance
-                        total_size=0,  # Will be computed separately for performance
-                        last_modified=datetime.fromtimestamp(stat.st_mtime)
-                    ))
-            return folders
-        
-        loop = asyncio.get_event_loop()
+
+        def _list_folders_sync() -> list[FolderInfo]:
+            folders: list[FolderInfo] = []
+            for p in full_path.iterdir():
+                if not p.is_dir():
+                    continue
+                files = [
+                    f for f in p.rglob("*") if f.is_file() and not f.name.endswith(META_SUFFIX)
+                ]
+                folders.append(
+                    FolderInfo(
+                        name=p.name,
+                        path=p.relative_to(self.base_path).as_posix(),
+                        file_count=len(files),
+                        total_size=sum(f.stat().st_size for f in files),
+                        last_modified=self._mtime(p.stat()),
+                    )
+                )
+            return sorted(folders, key=lambda x: x.name)
+
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self.executor, _list_folders_sync)
-    
-    async def get_file_info(self, file_path: str) -> Optional[FileInfo]:
+
+    async def get_file_info(self, file_path: str) -> FileInfo | None:
         full_path = self._get_full_path(file_path)
-        if not await aiofiles.os.path.exists(full_path):
+        if not await aiofiles.os.path.isfile(full_path):
             return None
-        
+
         stat = await aiofiles.os.stat(full_path)
-        
-        # Load metadata if exists
-        metadata_path = full_path.with_suffix(full_path.suffix + '.meta')
-        metadata: Dict[str, Any] = {}
-        if await aiofiles.os.path.exists(metadata_path):
-            try:
-                async with aiofiles.open(metadata_path, 'r', encoding='utf-8') as f:
-                    content = await f.read()
-                    metadata = json.loads(content)
-            except (json.JSONDecodeError, IOError):
-                pass
-        
         return FileInfo(
             name=full_path.name,
-            path=file_path,
+            path=full_path.relative_to(self.base_path).as_posix(),
             size=stat.st_size,
-            last_modified=datetime.fromtimestamp(stat.st_mtime),
-            content_type=mimetypes.guess_type(str(full_path))[0] or 'application/octet-stream',
-            metadata=metadata
+            last_modified=self._mtime(stat),
+            content_type=self._content_type(full_path),
+            metadata=self._read_meta_sync(full_path),
         )
-    
+
     async def create_folder(self, folder_path: str) -> bool:
         try:
             full_path = self._get_full_path(folder_path)
             await aiofiles.os.makedirs(full_path, exist_ok=True)
             return True
-        except Exception:
+        except Exception as e:
+            logger.error("Local create_folder failed for %s: %s", folder_path, e)
             return False
-    
+
     async def delete_folder(self, folder_path: str, recursive: bool = False) -> bool:
         try:
             full_path = self._get_full_path(folder_path)
-            if not await aiofiles.os.path.exists(full_path):
+            if full_path == self.base_path:
+                return False  # never delete the storage root itself
+            if not await aiofiles.os.path.isdir(full_path):
                 return False
-            
-            def _delete_folder_sync():
-                if not recursive:
-                    # Check if folder is empty
-                    if any(full_path.iterdir()):
-                        return False
-                    full_path.rmdir()
-                else:
+
+            def _delete_folder_sync() -> bool:
+                if recursive:
                     shutil.rmtree(full_path)
+                    return True
+                if any(full_path.iterdir()):
+                    return False
+                full_path.rmdir()
                 return True
-            
-            loop = asyncio.get_event_loop()
+
+            loop = asyncio.get_running_loop()
             return await loop.run_in_executor(self.executor, _delete_folder_sync)
-        except Exception:
+        except Exception as e:
+            logger.error("Local delete_folder failed for %s: %s", folder_path, e)
             return False
-    
+
     # Batch operations for improved performance
-    async def upload_batch(self, files: List[tuple[str, Union[bytes, BinaryIO], Optional[str], Optional[Dict[str, Any]]]]) -> List[bool]:
+    async def upload_batch(
+        self,
+        files: list[tuple[str, bytes | BinaryIO, str | None, dict[str, Any] | None]],
+    ) -> list[bool]:
         """Upload multiple files concurrently."""
-        tasks = [self.upload(file_path, content, content_type, metadata) 
-                for file_path, content, content_type, metadata in files]
-        return await asyncio.gather(*tasks, return_exceptions=False)
-    
-    async def download_batch(self, file_paths: List[str]) -> List[bytes]:
+        return list(
+            await asyncio.gather(
+                *[self.upload(fp, content, ct, meta) for fp, content, ct, meta in files]
+            )
+        )
+
+    async def download_batch(self, file_paths: list[str]) -> list[bytes]:
         """Download multiple files concurrently."""
-        tasks = [self.download(file_path) for file_path in file_paths]
-        return await asyncio.gather(*tasks)
-    
-    async def delete_batch(self, file_paths: List[str]) -> List[bool]:
+        return list(await asyncio.gather(*[self.download(fp) for fp in file_paths]))
+
+    async def delete_batch(self, file_paths: list[str]) -> list[bool]:
         """Delete multiple files concurrently."""
-        tasks = [self.delete(file_path) for file_path in file_paths]
-        return await asyncio.gather(*tasks)
+        return list(await asyncio.gather(*[self.delete(fp) for fp in file_paths]))
