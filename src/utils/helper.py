@@ -32,3 +32,24 @@ def to_app_timezone(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(Config.TZ)
+    
+    
+def _optional_bool(value: str|None, default: bool) -> bool:
+    """Read an optional boolean var"""
+    
+    _TRUE = {"1", "true", "yes", "on", "y", "t"}
+    _FALSE = {"0", "false", "no", "off", "n", "f"}
+
+    if value is None or value.strip() == "":
+        return default
+    val = value.strip().lower()
+    if val in _TRUE:
+        return True
+    if val in _FALSE:
+        return False
+    print(
+        f"FATAL: {value!r} is not a boolean. "
+        f"Use one of {sorted(_TRUE)} or {sorted(_FALSE)}.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
